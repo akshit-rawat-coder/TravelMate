@@ -1,17 +1,38 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import ProtectedRoute from './components/ProtectedRoute'
+import { AuthProvider } from './context/AuthContext'
 import MainLayout from './layouts/MainLayout'
 import HomePage from './pages/HomePage'
+import LoginPage from './pages/LoginPage'
+import MyTripsPage from './pages/MyTripsPage'
+import ProfilePage from './pages/ProfilePage'
+import SignupPage from './pages/SignupPage'
+import TripDetailsPage from './pages/TripDetailsPage'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<MainLayout />}>
-          <Route index element={<HomePage />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Authentication Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+
+          {/* Protected Application Area */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<MainLayout />}>
+              <Route index element={<HomePage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/trips" element={<MyTripsPage />} />
+              <Route path="/trips/:tripId" element={<TripDetailsPage />} />
+            </Route>
+          </Route>
+
+          {/* Catch-all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
 
