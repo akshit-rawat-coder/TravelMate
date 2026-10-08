@@ -17,6 +17,7 @@ import CurrencyConversionCard from '../components/CurrencyConversionCard'
 import WeatherCard from '../components/WeatherCard'
 import FlightPricesCard from '../components/FlightPricesCard'
 import VisaRequirementsCard from '../components/VisaRequirementsCard'
+import AttractionsCard from '../components/AttractionsCard'
 
 const CABIN_CLASS_LABELS = {
   economy: 'Economy',
@@ -249,6 +250,9 @@ function TripDetailsPage() {
 
       {/* Real Visa & Entry Requirements Card */}
       <VisaRequirementsCard trip={trip} />
+
+      {/* Real Attractions & Places Discovery Card */}
+      <AttractionsCard trip={trip} />
 
       {/* Travel Intelligence Placeholder Section */}
       <div className="mt-8 rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[color:rgba(247,243,234,0.6)] p-8 text-center sm:p-12">

@@ -1922,6 +1922,895 @@ async function handleVisaRequest(
   );
 }
 
+// ==========================================
+// Attractions / Places Intelligence (OpenRouteService)
+// ==========================================
+
+const POPULAR_DESTINATION_COORDINATES: Record<
+  string,
+  { lat: number; lon: number }
+> = {
+  paris: { lat: 48.8566, lon: 2.3522 },
+  nice: { lat: 43.7102, lon: 7.262 },
+  lyon: { lat: 45.764, lon: 4.8357 },
+  marseille: { lat: 43.2965, lon: 5.3698 },
+  rome: { lat: 41.9028, lon: 12.4964 },
+  milan: { lat: 45.4642, lon: 9.19 },
+  venice: { lat: 45.4408, lon: 12.3155 },
+  florence: { lat: 43.7696, lon: 11.2558 },
+  london: { lat: 51.5074, lon: -0.1278 },
+  edinburgh: { lat: 55.9533, lon: -3.1883 },
+  tokyo: { lat: 35.6762, lon: 139.6503 },
+  kyoto: { lat: 35.0116, lon: 135.7681 },
+  osaka: { lat: 34.6937, lon: 135.5023 },
+  "new york": { lat: 40.7128, lon: -74.006 },
+  "los angeles": { lat: 34.0522, lon: -118.2437 },
+  "san francisco": { lat: 37.7749, lon: -122.4194 },
+  "las vegas": { lat: 36.1699, lon: -115.1398 },
+  miami: { lat: 25.7617, lon: -80.1918 },
+  chicago: { lat: 41.8781, lon: -87.6298 },
+  dubai: { lat: 25.2048, lon: 55.2708 },
+  "abu dhabi": { lat: 24.4539, lon: 54.3773 },
+  singapore: { lat: 1.3521, lon: 103.8198 },
+  bangkok: { lat: 13.7563, lon: 100.5018 },
+  phuket: { lat: 7.8804, lon: 98.3923 },
+  bali: { lat: -8.4095, lon: 115.1889 },
+  "kuala lumpur": { lat: 3.139, lon: 101.6869 },
+  hanoi: { lat: 21.0285, lon: 105.8542 },
+  seoul: { lat: 37.5665, lon: 126.978 },
+  sydney: { lat: -33.8688, lon: 151.2093 },
+  melbourne: { lat: -37.8136, lon: 144.9631 },
+  toronto: { lat: 43.6532, lon: -79.3832 },
+  vancouver: { lat: 49.2827, lon: -123.1207 },
+  berlin: { lat: 52.52, lon: 13.405 },
+  munich: { lat: 48.1351, lon: 11.582 },
+  amsterdam: { lat: 52.3676, lon: 4.9041 },
+  barcelona: { lat: 41.3879, lon: 2.1699 },
+  madrid: { lat: 40.4168, lon: -3.7038 },
+  lisbon: { lat: 38.7223, lon: -9.1393 },
+  vienna: { lat: 48.2082, lon: 16.3738 },
+  zurich: { lat: 47.3769, lon: 8.5417 },
+  athens: { lat: 37.9838, lon: 23.7275 },
+  prague: { lat: 50.0755, lon: 14.4378 },
+  budapest: { lat: 47.4979, lon: 19.0402 },
+  dublin: { lat: 53.3498, lon: -6.2603 },
+  cairo: { lat: 30.0444, lon: 31.2357 },
+  istanbul: { lat: 41.0082, lon: 28.9784 },
+  delhi: { lat: 28.6139, lon: 77.209 },
+  mumbai: { lat: 19.076, lon: 72.8777 },
+  goa: { lat: 15.2993, lon: 74.124 },
+  jaipur: { lat: 26.9124, lon: 75.7873 },
+  "cape town": { lat: -33.9249, lon: 18.4241 },
+  "rio de janeiro": { lat: -22.9068, lon: -43.1729 },
+  "buenos aires": { lat: -34.6037, lon: -58.3816 },
+  "mexico city": { lat: 19.4326, lon: -99.1332 },
+  auckland: { lat: -36.8485, lon: 174.7633 },
+};
+
+function calculateHaversineDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
+async function geocodeDestination(
+  city: string,
+  country: string,
+  geoapifyApiKey?: string
+): Promise<{ lat: number; lon: number } | null> {
+  const cityKey = (city || "").trim().toLowerCase();
+  if (POPULAR_DESTINATION_COORDINATES[cityKey]) {
+    return POPULAR_DESTINATION_COORDINATES[cityKey];
+  }
+
+  const query = [city, country].filter(Boolean).join(", ").trim();
+  if (!query) return null;
+
+  // 1. Try Geoapify Geocoding API if key is present
+  if (geoapifyApiKey && geoapifyApiKey.trim().length > 0) {
+    try {
+      const cleanKey = geoapifyApiKey.trim().replace(/^["']|["']$/g, "");
+      const geoUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(
+        query
+      )}&limit=1&apiKey=${encodeURIComponent(cleanKey)}`;
+      const geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(6000) });
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        const coords = geoData?.features?.[0]?.geometry?.coordinates;
+        if (Array.isArray(coords) && coords.length >= 2) {
+          return { lon: Number(coords[0]), lat: Number(coords[1]) };
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[Attractions Geocode] Geoapify geocode failed:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  // 2. Fallback to OpenStreetMap Nominatim
+  try {
+    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+      query
+    )}&limit=1`;
+    const nomRes = await fetch(nomUrl, {
+      method: "GET",
+      headers: {
+        "User-Agent": "TravelMate/1.0",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (nomRes.ok) {
+      const nomData = await nomRes.json();
+      if (
+        Array.isArray(nomData) &&
+        nomData.length > 0 &&
+        nomData[0].lat &&
+        nomData[0].lon
+      ) {
+        return { lat: Number(nomData[0].lat), lon: Number(nomData[0].lon) };
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[Attractions Geocode] Nominatim fallback failed:",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+
+  return null;
+}
+
+function formatGeoapifyCategory(categories: any): string {
+  if (!Array.isArray(categories) || categories.length === 0) return "Attraction";
+
+  const priorityKeywords = [
+    "museum",
+    "monument",
+    "memorial",
+    "castle",
+    "viewpoint",
+    "artwork",
+    "gallery",
+    "park",
+    "garden",
+    "zoo",
+    "aquarium",
+    "heritage",
+    "attraction",
+    "sights",
+  ];
+
+  for (const kw of priorityKeywords) {
+    const match = categories.find((c: any) => String(c).toLowerCase().includes(kw));
+    if (match) {
+      const parts = String(match).split(".");
+      const label = parts[parts.length - 1];
+      return label.charAt(0).toUpperCase() + label.slice(1).replace(/_/g, " ");
+    }
+  }
+
+  const primary = String(categories[0]).split(".");
+  const label = primary[primary.length - 1];
+  return label.charAt(0).toUpperCase() + label.slice(1).replace(/_/g, " ");
+}
+
+function sanitizeSafeOutput(text: string, secretKey?: string): string {
+  if (!text) return "";
+  if (!secretKey || !secretKey.trim()) return text;
+  return text.replaceAll(secretKey.trim(), "[REDACTED_API_KEY]");
+}
+
+interface GeoapifyFetchResult {
+  ok: boolean;
+  features: any[];
+  providerStatus?: number;
+  providerMessage?: string;
+}
+
+async function fetchGeoapifyPlaces(
+  lat: number,
+  lon: number,
+  radiusMeters: number,
+  geoapifyApiKey: string
+): Promise<GeoapifyFetchResult> {
+  const radius = Math.min(Math.max(radiusMeters, 500), 5000);
+  const categories =
+    "tourism,heritage,entertainment.culture,entertainment.museum,leisure.park";
+
+  const cleanKey = geoapifyApiKey.trim().replace(/^["']|["']$/g, "");
+  const url = `https://api.geoapify.com/v2/places?categories=${encodeURIComponent(
+    categories
+  )}&filter=circle:${lon.toFixed(6)},${lat.toFixed(6)},${radius}&bias=proximity:${lon.toFixed(6)},${lat.toFixed(6)}&limit=100&apiKey=${cleanKey}`;
+
+  const safeUrl = sanitizeSafeOutput(url, cleanKey);
+  console.log(`[Attractions] Querying Geoapify Places API: ${safeUrl}`);
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const rawText = await res.text();
+    const safeText = sanitizeSafeOutput(rawText, cleanKey);
+
+    console.log(`[Attractions] Geoapify HTTP Status: ${res.status}`);
+
+    if (!res.ok) {
+      console.warn(
+        `[Attractions] Geoapify upstream non-2xx status ${res.status}: ${safeText.slice(0, 300)}`
+      );
+      return {
+        ok: false,
+        features: [],
+        providerStatus: res.status,
+        providerMessage: safeText.slice(0, 300) || `Geoapify Places returned HTTP ${res.status}`,
+      };
+    }
+
+    let data: any = null;
+    try {
+      data = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error("[Attractions] Geoapify JSON parse error:", parseErr);
+      return {
+        ok: false,
+        features: [],
+        providerStatus: 502,
+        providerMessage: "Invalid JSON response from Geoapify",
+      };
+    }
+
+    const features = Array.isArray(data?.features) ? data.features : [];
+    console.log(`[Attractions] Geoapify returned ${features.length} raw features`);
+
+    return {
+      ok: true,
+      features,
+      providerStatus: res.status,
+    };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const safeErr = sanitizeSafeOutput(errMsg, cleanKey);
+    console.error("[Attractions] Geoapify network/fetch exception:", safeErr);
+    return {
+      ok: false,
+      features: [],
+      providerStatus: 502,
+      providerMessage: safeErr || "Failed to connect to Geoapify Places service",
+    };
+  }
+}
+
+function calculateAttractionRelevance(
+  props: any,
+  distance: number | null,
+  radiusMeters: number
+): { score: number; displayCategory: string } {
+  const categories: string[] = Array.isArray(props?.categories)
+    ? props.categories.map((c: any) => String(c).toLowerCase())
+    : [];
+
+  const rawTags = props?.datasource?.raw || {};
+  const rawName = String(props?.name || rawTags?.name || "").trim();
+
+  // Category detection
+  const isArtwork = categories.some((c) =>
+    c.includes("artwork") || c.includes("statue") || c.includes("graffiti") || c.includes("mural")
+  );
+  const isMuseum = categories.some((c) =>
+    c.includes("museum") || c.includes("gallery")
+  );
+  const isHistoricOrMonument = categories.some((c) =>
+    c.includes("monument") ||
+    c.includes("memorial") ||
+    c.includes("castle") ||
+    c.includes("palace") ||
+    c.includes("heritage") ||
+    c.includes("place_of_worship") ||
+    c.includes("archaeological") ||
+    c.includes("historic")
+  );
+  const isCultural = categories.some((c) =>
+    c.includes("theatre") ||
+    c.includes("arts_centre") ||
+    c.includes("opera") ||
+    c.includes("culture")
+  );
+  const isParkOrViewpoint = categories.some((c) =>
+    c.includes("park") ||
+    c.includes("garden") ||
+    c.includes("viewpoint") ||
+    c.includes("nature_reserve")
+  );
+  const isMajorAttraction =
+    categories.some((c) =>
+      c.includes("heritage.unesco") ||
+      c.includes("tourism.sights") ||
+      c.includes("tourism.attraction")
+    ) && !isArtwork;
+
+  // 1. Base Score mapped to user priority tiers:
+  // Tier 1: Major tourist attractions / sights / UNESCO (60 pts)
+  // Tier 2: Museums (55 pts)
+  // Tier 3: Historic landmarks / monuments (50 pts)
+  // Tier 4: Famous cultural sites (42 pts)
+  // Tier 5: Parks / gardens / viewpoints (38 pts)
+  // Tier 6: Other tourism POIs (25 pts)
+  // Tier 7: Individual artworks / minor POIs (12 pts)
+  let baseScore = 25;
+  let displayCategory = "Attraction";
+
+  if (isMajorAttraction && (categories.some((c) => c.includes("unesco")) || isHistoricOrMonument)) {
+    baseScore = 60;
+    displayCategory = categories.some((c) => c.includes("unesco")) ? "UNESCO Heritage" : "Attraction";
+  } else if (isMuseum) {
+    baseScore = 55;
+    displayCategory = "Museum";
+  } else if (isHistoricOrMonument) {
+    baseScore = 50;
+    displayCategory = categories.some((c) => c.includes("monument"))
+      ? "Monument"
+      : categories.some((c) => c.includes("memorial"))
+      ? "Memorial"
+      : categories.some((c) => c.includes("castle") || c.includes("palace"))
+      ? "Historic Site"
+      : "Historic Site";
+  } else if (isMajorAttraction) {
+    baseScore = 48;
+    displayCategory = "Attraction";
+  } else if (isCultural) {
+    baseScore = 42;
+    displayCategory = "Culture";
+  } else if (isParkOrViewpoint) {
+    baseScore = 38;
+    displayCategory = categories.some((c) => c.includes("viewpoint")) ? "Viewpoint" : "Park";
+  } else if (isArtwork) {
+    baseScore = 12;
+    displayCategory = categories.some((c) => c.includes("statue")) ? "Statue" : "Artwork";
+  } else {
+    baseScore = 25;
+    displayCategory = "Sights";
+  }
+
+  // 2. Global Prominence & Notability Boosters (works for ANY destination globally)
+  let notabilityBoost = 0;
+
+  // Has Wikidata or Wikipedia article (globally strong signal for notable attractions)
+  if (rawTags?.wikidata || rawTags?.wikipedia || props?.wiki_and_media || props?.wikidata) {
+    notabilityBoost += 25;
+  }
+
+  // Has dedicated official website
+  if (props?.website || rawTags?.website || rawTags?.["contact:website"] || rawTags?.url) {
+    notabilityBoost += 10;
+  }
+
+  // Has description or opening hours
+  if (props?.description || rawTags?.description || rawTags?.opening_hours) {
+    notabilityBoost += 5;
+  }
+
+  // 3. Obscurity / Tracking Code Penalty (e.g. "PA_1570", "PA 230")
+  let obscurityPenalty = 0;
+  if (/^[A-Z]{1,4}[_\-\s]?\d{2,6}$/i.test(rawName)) {
+    obscurityPenalty += 35;
+  } else if (/^\d+$/.test(rawName)) {
+    obscurityPenalty += 30;
+  }
+
+  // 4. Distance Factor: closer POIs get a smooth boost (+0 to +20 pts)
+  let distanceScore = 0;
+  if (distance != null && radiusMeters > 0) {
+    const distRatio = Math.min(Math.max(distance / radiusMeters, 0), 1);
+    distanceScore = Math.round((1 - distRatio) * 20);
+  }
+
+  const finalScore = baseScore + notabilityBoost + distanceScore - obscurityPenalty;
+
+  return {
+    score: finalScore,
+    displayCategory,
+  };
+}
+
+function normalizeGeoapifyAttractions(
+  features: any[],
+  destLat: number,
+  destLon: number,
+  radiusMeters: number = 2000
+): Array<{
+  id: string;
+  name: string;
+  category: string;
+  latitude: number;
+  longitude: number;
+  distance: number | null;
+  address: string | null;
+  website: string | null;
+  source: string;
+}> {
+  const seenNames = new Set<string>();
+  const seenIds = new Set<string>();
+  const scoredItems: Array<{
+    id: string;
+    name: string;
+    category: string;
+    latitude: number;
+    longitude: number;
+    distance: number | null;
+    address: string | null;
+    website: string | null;
+    source: string;
+    score: number;
+  }> = [];
+
+  for (let i = 0; i < features.length; i++) {
+    const feat = features[i];
+    const props = feat?.properties || {};
+
+    const rawName = props.name || props.datasource?.raw?.name || null;
+    if (!rawName || typeof rawName !== "string" || !rawName.trim()) {
+      continue;
+    }
+
+    const name = rawName.trim();
+    const nameKey = name.toLowerCase();
+    if (seenNames.has(nameKey)) {
+      continue;
+    }
+
+    const id = String(props.place_id || props.datasource?.raw?.osm_id || feat.id || `geo-${i}`);
+    if (seenIds.has(id)) {
+      continue;
+    }
+
+    seenNames.add(nameKey);
+    seenIds.add(id);
+
+    const coords = feat?.geometry?.coordinates;
+    const lon = Array.isArray(coords) ? Number(coords[0]) : Number(props.lon ?? destLon);
+    const lat = Array.isArray(coords) ? Number(coords[1]) : Number(props.lat ?? destLat);
+
+    let distance: number | null = null;
+    if (props.distance != null && !isNaN(Number(props.distance))) {
+      distance = Math.round(Number(props.distance));
+    } else if (destLat != null && destLon != null) {
+      distance = calculateHaversineDistance(destLat, destLon, lat, lon);
+    }
+
+    const { score, displayCategory } = calculateAttractionRelevance(
+      props,
+      distance,
+      radiusMeters
+    );
+
+    const category = displayCategory || formatGeoapifyCategory(props.categories);
+    const address =
+      props.formatted ||
+      [props.address_line1, props.address_line2].filter(Boolean).join(", ") ||
+      null;
+
+    const rawWeb =
+      props.website ||
+      props.datasource?.raw?.website ||
+      props.datasource?.raw?.contact?.website ||
+      props.datasource?.raw?.url ||
+      null;
+    let website: string | null = null;
+    if (typeof rawWeb === "string" && rawWeb.trim().startsWith("http")) {
+      website = rawWeb.trim();
+    } else if (typeof rawWeb === "string" && rawWeb.trim().length > 0) {
+      website = `https://${rawWeb.trim()}`;
+    }
+
+    scoredItems.push({
+      id,
+      name,
+      category,
+      latitude: lat,
+      longitude: lon,
+      distance,
+      address,
+      website,
+      source: "Geoapify",
+      score,
+    });
+  }
+
+  scoredItems.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    if (a.distance == null && b.distance == null) return 0;
+    if (a.distance == null) return 1;
+    if (b.distance == null) return -1;
+    return a.distance - b.distance;
+  });
+
+  return scoredItems.slice(0, 20).map(({ score: _score, ...item }) => item);
+}
+
+// Handle Attractions / Places Intelligence Request with Database-Backed Cache
+async function handleAttractionsRequest(
+  supabase: any,
+  trip: any,
+  cleanTripId: string,
+  destinationInfo: DestinationResolution,
+  refresh: boolean,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const now = new Date();
+  const RADIUS_METERS = 2000;
+
+  console.log(
+    `[Attractions] Handling request for trip ${cleanTripId} (${destinationInfo.city}, ${destinationInfo.country}). Refresh: ${refresh}`
+  );
+
+  // 1. Check Database Cache
+  let cachedRow: any = null;
+  try {
+    const { data: cacheData, error: cacheLookupErr } = await supabase
+      .from("attractions_cache")
+      .select("*")
+      .eq("trip_id", cleanTripId)
+      .eq("radius_meters", RADIUS_METERS)
+      .maybeSingle();
+
+    if (cacheLookupErr) {
+      console.warn("[Attractions Cache] Lookup warning:", cacheLookupErr.message);
+    } else {
+      cachedRow = cacheData;
+    }
+  } catch (ex) {
+    console.warn("[Attractions Cache] Lookup exception:", ex);
+  }
+
+  const isCacheHit = Boolean(
+    !refresh &&
+      cachedRow &&
+      cachedRow.attractions_data &&
+      cachedRow.expires_at &&
+      new Date(cachedRow.expires_at).getTime() > now.getTime()
+  );
+
+  if (isCacheHit) {
+    console.log(
+      `[Attractions Cache] HIT for trip ${cleanTripId}. Returning cached places.`
+    );
+    const items = Array.isArray(cachedRow.attractions_data?.items)
+      ? cachedRow.attractions_data.items
+      : Array.isArray(cachedRow.attractions_data)
+      ? cachedRow.attractions_data
+      : [];
+
+    return new Response(
+      JSON.stringify({
+        trip: {
+          id: trip.id,
+          destination: trip.destination,
+          country: trip.country,
+        },
+        attractions: {
+          city: cachedRow.destination_city || destinationInfo.city,
+          country: cachedRow.destination_country || destinationInfo.country,
+          radiusMeters: cachedRow.radius_meters || RADIUS_METERS,
+          latitude: cachedRow.latitude,
+          longitude: cachedRow.longitude,
+          items,
+          cached: true,
+          stale: false,
+          fetchedAt: cachedRow.fetched_at,
+          expiresAt: cachedRow.expires_at,
+        },
+        sources: [
+          {
+            name: "Geoapify",
+            type: "attractions",
+          },
+        ],
+        message: "Attractions retrieved from database cache.",
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // 2. Retrieve Geoapify API key securely from environment
+  const geoapifyApiKeyRaw = Deno.env.get("GEOAPIFY_API_KEY");
+  if (!geoapifyApiKeyRaw || geoapifyApiKeyRaw.trim().length === 0) {
+    console.error("[Attractions] GEOAPIFY_API_KEY secret is not configured in Edge Function");
+
+    // Stale cache fallback if previously cached
+    if (cachedRow && cachedRow.attractions_data) {
+      const items = Array.isArray(cachedRow.attractions_data?.items)
+        ? cachedRow.attractions_data.items
+        : Array.isArray(cachedRow.attractions_data)
+        ? cachedRow.attractions_data
+        : [];
+
+      return new Response(
+        JSON.stringify({
+          trip: {
+            id: trip.id,
+            destination: trip.destination,
+            country: trip.country,
+          },
+          attractions: {
+            city: cachedRow.destination_city || destinationInfo.city,
+            country: cachedRow.destination_country || destinationInfo.country,
+            radiusMeters: cachedRow.radius_meters || RADIUS_METERS,
+            latitude: cachedRow.latitude,
+            longitude: cachedRow.longitude,
+            items,
+            cached: true,
+            stale: true,
+            fetchedAt: cachedRow.fetched_at,
+            expiresAt: cachedRow.expires_at,
+          },
+          sources: [
+            {
+              name: "Geoapify",
+              type: "attractions",
+            },
+          ],
+          warning:
+            "Attractions service is not configured. Showing previously saved places.",
+          message:
+            "Attractions service is not configured. Showing previously saved places.",
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ error: "Attractions service is not configured." }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  const geoapifyApiKey = geoapifyApiKeyRaw.trim().replace(/^["']|["']$/g, "");
+
+  // 3. Resolve destination coordinates (latitude & longitude)
+  let destCoords: { lat: number; lon: number } | null = null;
+  if (cachedRow?.latitude != null && cachedRow?.longitude != null) {
+    destCoords = { lat: cachedRow.latitude, lon: cachedRow.longitude };
+  } else {
+    destCoords = await geocodeDestination(
+      destinationInfo.city,
+      destinationInfo.country,
+      geoapifyApiKey
+    );
+  }
+
+  if (!destCoords) {
+    console.error(
+      `[Attractions] Unable to geocode destination "${destinationInfo.city}, ${destinationInfo.country}"`
+    );
+
+    if (cachedRow && cachedRow.attractions_data) {
+      const items = Array.isArray(cachedRow.attractions_data?.items)
+        ? cachedRow.attractions_data.items
+        : [];
+      return new Response(
+        JSON.stringify({
+          trip: {
+            id: trip.id,
+            destination: trip.destination,
+            country: trip.country,
+          },
+          attractions: {
+            city: cachedRow.destination_city || destinationInfo.city,
+            country: cachedRow.destination_country || destinationInfo.country,
+            radiusMeters: cachedRow.radius_meters || RADIUS_METERS,
+            latitude: cachedRow.latitude,
+            longitude: cachedRow.longitude,
+            items,
+            cached: true,
+            stale: true,
+            fetchedAt: cachedRow.fetched_at,
+            expiresAt: cachedRow.expires_at,
+          },
+          sources: [{ name: "Geoapify", type: "attractions" }],
+          warning:
+            "Unable to determine destination location. Showing previously saved places.",
+          message:
+            "Unable to determine destination location. Showing previously saved places.",
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        error: `Could not determine geographical coordinates for "${destinationInfo.city}".`,
+      }),
+      {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // 4. Query Geoapify Places API
+  console.log(
+    `[Attractions] Querying Geoapify Places around [${destCoords.lat}, ${destCoords.lon}] radius=${RADIUS_METERS}m...`
+  );
+  const placesResult = await fetchGeoapifyPlaces(
+    destCoords.lat,
+    destCoords.lon,
+    RADIUS_METERS,
+    geoapifyApiKey
+  );
+
+  // 5. Handle provider failure with stale cache fallback
+  if (!placesResult.ok) {
+    console.error("[Attractions] Geoapify search failed:", placesResult.providerMessage);
+
+    if (cachedRow && cachedRow.attractions_data) {
+      const items = Array.isArray(cachedRow.attractions_data?.items)
+        ? cachedRow.attractions_data.items
+        : [];
+      return new Response(
+        JSON.stringify({
+          trip: {
+            id: trip.id,
+            destination: trip.destination,
+            country: trip.country,
+          },
+          attractions: {
+            city: cachedRow.destination_city || destinationInfo.city,
+            country: cachedRow.destination_country || destinationInfo.country,
+            radiusMeters: cachedRow.radius_meters || RADIUS_METERS,
+            latitude: cachedRow.latitude,
+            longitude: cachedRow.longitude,
+            items,
+            cached: true,
+            stale: true,
+            fetchedAt: cachedRow.fetched_at,
+            expiresAt: cachedRow.expires_at,
+          },
+          sources: [{ name: "Geoapify", type: "attractions" }],
+          warning:
+            "Unable to refresh live places right now. Showing previously saved places.",
+          message:
+            "Unable to refresh live places right now. Showing previously saved places.",
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const errorStatus =
+      placesResult.providerStatus &&
+      placesResult.providerStatus >= 400 &&
+      placesResult.providerStatus < 600
+        ? placesResult.providerStatus
+        : 502;
+
+    return new Response(
+      JSON.stringify({
+        error: "Attractions provider request failed",
+        providerStatus: placesResult.providerStatus || errorStatus,
+        providerMessage: placesResult.providerMessage || "Attractions provider request failed",
+      }),
+      {
+        status: errorStatus,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // 6. Normalize attractions response
+  const normalizedPlaces = normalizeGeoapifyAttractions(
+    placesResult.features,
+    destCoords.lat,
+    destCoords.lon,
+    RADIUS_METERS
+  );
+
+  // 7. Save into attractions_cache (7-day TTL)
+  const ATTRACTIONS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const expiresAt = new Date(now.getTime() + ATTRACTIONS_TTL_MS);
+
+  try {
+    const { error: upsertErr } = await supabase.from("attractions_cache").upsert(
+      {
+        trip_id: cleanTripId,
+        destination_city: destinationInfo.city,
+        destination_country: destinationInfo.country,
+        latitude: destCoords.lat,
+        longitude: destCoords.lon,
+        radius_meters: RADIUS_METERS,
+        attractions_data: {
+          items: normalizedPlaces,
+          count: normalizedPlaces.length,
+        },
+        fetched_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        updated_at: now.toISOString(),
+      },
+      { onConflict: "trip_id,radius_meters" }
+    );
+
+    if (upsertErr) {
+      console.warn("[Attractions Cache] Upsert warning:", upsertErr.message);
+    } else {
+      console.log(
+        `[Attractions Cache] Saved ${normalizedPlaces.length} attractions for trip ${cleanTripId}`
+      );
+    }
+  } catch (saveErr) {
+    console.warn("[Attractions Cache] Save exception caught:", saveErr);
+  }
+
+  // 8. Return normalized HTTP 200 response
+  return new Response(
+    JSON.stringify({
+      trip: {
+        id: trip.id,
+        destination: trip.destination,
+        country: trip.country,
+      },
+      attractions: {
+        city: destinationInfo.city,
+        country: destinationInfo.country,
+        radiusMeters: RADIUS_METERS,
+        latitude: destCoords.lat,
+        longitude: destCoords.lon,
+        items: normalizedPlaces,
+        cached: false,
+        stale: false,
+        fetchedAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      },
+      sources: [
+        {
+          name: "Geoapify",
+          type: "attractions",
+        },
+      ],
+      message: "Attractions retrieved successfully.",
+    }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }
+  );
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = getCorsHeaders(req);
 
@@ -2092,6 +2981,22 @@ Deno.serve(async (req: Request) => {
         trip,
         cleanTripId,
         destinationInfo,
+        corsHeaders
+      );
+    }
+
+    // If Attractions / Places Service is requested, handle Attractions Intelligence
+    if (
+      body.service === "attractions" ||
+      body.type === "attractions" ||
+      (body as any).action === "attractions"
+    ) {
+      return await handleAttractionsRequest(
+        supabase,
+        trip,
+        cleanTripId,
+        destinationInfo,
+        Boolean(body.refresh),
         corsHeaders
       );
     }
