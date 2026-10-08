@@ -125,7 +125,8 @@ function CurrencyConversionCard({ trip }) {
     currencyData?.destination ||
     destinationInfo?.currency ||
     currencyData?.target ||
-    'EUR'
+    trip?.currency ||
+    'USD'
 
   const sourceCurrency = currencyData?.source || trip?.currency || 'USD'
 

@@ -35,119 +35,322 @@ function getCorsHeaders(req: Request): Record<string, string> {
 }
 
 // 1. Comprehensive Country to ISO 4217 Currency mapping
-const COUNTRY_CURRENCY_MAP: Record<string, string> = {
-  france: "EUR",
-  germany: "EUR",
-  italy: "EUR",
-  spain: "EUR",
-  netherlands: "EUR",
-  belgium: "EUR",
-  greece: "EUR",
-  portugal: "EUR",
-  austria: "EUR",
-  ireland: "EUR",
-  finland: "EUR",
-  slovakia: "EUR",
-  slovenia: "EUR",
-  lithuania: "EUR",
-  latvia: "EUR",
-  estonia: "EUR",
-  cyprus: "EUR",
-  malta: "EUR",
-  luxembourg: "EUR",
-  croatia: "EUR",
-  monaco: "EUR",
-  andorra: "EUR",
-  vatican: "EUR",
-  "vatican city": "EUR",
-  japan: "JPY",
-  "united states": "USD",
-  usa: "USD",
-  us: "USD",
-  "united kingdom": "GBP",
-  uk: "GBP",
-  england: "GBP",
-  scotland: "GBP",
-  wales: "GBP",
-  "northern ireland": "GBP",
-  india: "INR",
-  "united arab emirates": "AED",
-  uae: "AED",
-  singapore: "SGD",
-  australia: "AUD",
-  canada: "CAD",
-  switzerland: "CHF",
-  thailand: "THB",
-  malaysia: "MYR",
-  indonesia: "IDR",
-  vietnam: "VND",
-  "new zealand": "NZD",
-  china: "CNY",
-  "south korea": "KRW",
-  korea: "KRW",
-  turkey: "TRY",
-  türkiye: "TRY",
-  "saudi arabia": "SAR",
-  qatar: "QAR",
-  "south africa": "ZAR",
-  mexico: "MXN",
-  brazil: "BRL",
-  egypt: "EGP",
-  morocco: "MAD",
-  norway: "NOK",
-  sweden: "SEK",
-  denmark: "DKK",
-  poland: "PLN",
-  "czech republic": "CZK",
-  czechia: "CZK",
-  hungary: "HUF",
-  iceland: "ISK",
-  "sri lanka": "LKR",
-  nepal: "NPR",
-  maldives: "MVR",
-  philippines: "PHP",
-  argentina: "ARS",
-  chile: "CLP",
-  colombia: "COP",
-  peru: "PEN",
-  kenya: "KES",
-  tanzania: "TZS",
-  jordan: "JOD",
-  oman: "OMR",
-  bahrain: "BHD",
-  kuwait: "KWD",
-  israel: "ILS",
-  "hong kong": "HKD",
-  taiwan: "TWD",
-  russia: "RUB",
+const COUNTRY_INFO_MAP: Record<string, { country: string; currency: string }> = {
+  // Asia
+  india: { country: "India", currency: "INR" },
+  bharat: { country: "India", currency: "INR" },
+  hindustan: { country: "India", currency: "INR" },
+  japan: { country: "Japan", currency: "JPY" },
+  nippon: { country: "Japan", currency: "JPY" },
+  singapore: { country: "Singapore", currency: "SGD" },
+  thailand: { country: "Thailand", currency: "THB" },
+  malaysia: { country: "Malaysia", currency: "MYR" },
+  indonesia: { country: "Indonesia", currency: "IDR" },
+  vietnam: { country: "Vietnam", currency: "VND" },
+  "south korea": { country: "South Korea", currency: "KRW" },
+  korea: { country: "South Korea", currency: "KRW" },
+  "republic of korea": { country: "South Korea", currency: "KRW" },
+  china: { country: "China", currency: "CNY" },
+  "hong kong": { country: "Hong Kong", currency: "HKD" },
+  taiwan: { country: "Taiwan", currency: "TWD" },
+  philippines: { country: "Philippines", currency: "PHP" },
+  "sri lanka": { country: "Sri Lanka", currency: "LKR" },
+  nepal: { country: "Nepal", currency: "NPR" },
+  maldives: { country: "Maldives", currency: "MVR" },
+  cambodia: { country: "Cambodia", currency: "KHR" },
+  laos: { country: "Laos", currency: "LAK" },
+  myanmar: { country: "Myanmar", currency: "MMK" },
+  bangladesh: { country: "Bangladesh", currency: "BDT" },
+  bhutan: { country: "Bhutan", currency: "BTN" },
+
+  // Middle East
+  "united arab emirates": { country: "United Arab Emirates", currency: "AED" },
+  uae: { country: "United Arab Emirates", currency: "AED" },
+  emirates: { country: "United Arab Emirates", currency: "AED" },
+  "saudi arabia": { country: "Saudi Arabia", currency: "SAR" },
+  qatar: { country: "Qatar", currency: "QAR" },
+  oman: { country: "Oman", currency: "OMR" },
+  bahrain: { country: "Bahrain", currency: "BHD" },
+  kuwait: { country: "Kuwait", currency: "KWD" },
+  turkey: { country: "Turkey", currency: "TRY" },
+  türkiye: { country: "Turkey", currency: "TRY" },
+  jordan: { country: "Jordan", currency: "JOD" },
+  israel: { country: "Israel", currency: "ILS" },
+  egypt: { country: "Egypt", currency: "EGP" },
+
+  // Europe (Eurozone)
+  france: { country: "France", currency: "EUR" },
+  germany: { country: "Germany", currency: "EUR" },
+  italy: { country: "Italy", currency: "EUR" },
+  spain: { country: "Spain", currency: "EUR" },
+  netherlands: { country: "Netherlands", currency: "EUR" },
+  holland: { country: "Netherlands", currency: "EUR" },
+  belgium: { country: "Belgium", currency: "EUR" },
+  austria: { country: "Austria", currency: "EUR" },
+  portugal: { country: "Portugal", currency: "EUR" },
+  greece: { country: "Greece", currency: "EUR" },
+  ireland: { country: "Ireland", currency: "EUR" },
+  finland: { country: "Finland", currency: "EUR" },
+  luxembourg: { country: "Luxembourg", currency: "EUR" },
+  monaco: { country: "Monaco", currency: "EUR" },
+  malta: { country: "Malta", currency: "EUR" },
+  cyprus: { country: "Cyprus", currency: "EUR" },
+  slovakia: { country: "Slovakia", currency: "EUR" },
+  slovenia: { country: "Slovenia", currency: "EUR" },
+  estonia: { country: "Estonia", currency: "EUR" },
+  latvia: { country: "Latvia", currency: "EUR" },
+  lithuania: { country: "Lithuania", currency: "EUR" },
+  croatia: { country: "Croatia", currency: "EUR" },
+  andorra: { country: "Andorra", currency: "EUR" },
+  vatican: { country: "Vatican City", currency: "EUR" },
+  "vatican city": { country: "Vatican City", currency: "EUR" },
+
+  // Europe (Non-Eurozone)
+  "united kingdom": { country: "United Kingdom", currency: "GBP" },
+  uk: { country: "United Kingdom", currency: "GBP" },
+  "great britain": { country: "United Kingdom", currency: "GBP" },
+  england: { country: "United Kingdom", currency: "GBP" },
+  scotland: { country: "United Kingdom", currency: "GBP" },
+  wales: { country: "United Kingdom", currency: "GBP" },
+  "northern ireland": { country: "United Kingdom", currency: "GBP" },
+  switzerland: { country: "Switzerland", currency: "CHF" },
+  norway: { country: "Norway", currency: "NOK" },
+  sweden: { country: "Sweden", currency: "SEK" },
+  denmark: { country: "Denmark", currency: "DKK" },
+  poland: { country: "Poland", currency: "PLN" },
+  "czech republic": { country: "Czech Republic", currency: "CZK" },
+  czechia: { country: "Czech Republic", currency: "CZK" },
+  hungary: { country: "Hungary", currency: "HUF" },
+  iceland: { country: "Iceland", currency: "ISK" },
+  russia: { country: "Russia", currency: "RUB" },
+
+  // Americas
+  "united states": { country: "United States", currency: "USD" },
+  "united states of america": { country: "United States", currency: "USD" },
+  usa: { country: "United States", currency: "USD" },
+  us: { country: "United States", currency: "USD" },
+  america: { country: "United States", currency: "USD" },
+  canada: { country: "Canada", currency: "CAD" },
+  mexico: { country: "Mexico", currency: "MXN" },
+  brazil: { country: "Brazil", currency: "BRL" },
+  argentina: { country: "Argentina", currency: "ARS" },
+  chile: { country: "Chile", currency: "CLP" },
+  colombia: { country: "Colombia", currency: "COP" },
+  peru: { country: "Peru", currency: "PEN" },
+  "costa rica": { country: "Costa Rica", currency: "CRC" },
+
+  // Oceania
+  australia: { country: "Australia", currency: "AUD" },
+  "new zealand": { country: "New Zealand", currency: "NZD" },
+  fiji: { country: "Fiji", currency: "FJD" },
+
+  // Africa
+  "south africa": { country: "South Africa", currency: "ZAR" },
+  morocco: { country: "Morocco", currency: "MAD" },
+  kenya: { country: "Kenya", currency: "KES" },
+  tanzania: { country: "Tanzania", currency: "TZS" },
+  mauritius: { country: "Mauritius", currency: "MUR" },
+  seychelles: { country: "Seychelles", currency: "SCR" },
 };
 
-// 2. Popular travel cities to Country and Currency lookup
+// Derived map for ISO 4217 Currency lookups
+const COUNTRY_CURRENCY_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(COUNTRY_INFO_MAP).map(([k, v]) => [k, v.currency])
+);
+
+// Comprehensive set of Indian States and Union Territories (lowercase)
+const INDIAN_STATES_AND_UTS = new Set([
+  "andhra pradesh", "arunachal pradesh", "assam", "bihar", "chhattisgarh",
+  "goa", "gujarat", "haryana", "himachal pradesh", "jharkhand", "karnataka",
+  "kerala", "madhya pradesh", "maharashtra", "manipur", "meghalaya", "mizoram",
+  "nagaland", "odisha", "orissa", "punjab", "rajasthan", "sikkim", "tamil nadu",
+  "telangana", "tripura", "uttar pradesh", "uttarakhand", "west bengal",
+  "delhi", "new delhi", "jammu and kashmir", "ladakh", "chandigarh",
+  "puducherry", "pondicherry", "andaman and nicobar", "andaman and nicobar islands",
+  "dadra and nagar haveli", "daman and diu", "lakshadweep"
+]);
+
+// Popular travel cities to Country and Currency lookup
 const CITY_DESTINATION_MAP: Record<
   string,
   { city: string; country: string; currency: string }
 > = {
+  // India - Domestic Destinations
+  kolkata: { city: "Kolkata", country: "India", currency: "INR" },
+  calcutta: { city: "Kolkata", country: "India", currency: "INR" },
+  delhi: { city: "Delhi", country: "India", currency: "INR" },
+  "new delhi": { city: "New Delhi", country: "India", currency: "INR" },
+  mumbai: { city: "Mumbai", country: "India", currency: "INR" },
+  bombay: { city: "Mumbai", country: "India", currency: "INR" },
+  bengaluru: { city: "Bengaluru", country: "India", currency: "INR" },
+  bangalore: { city: "Bengaluru", country: "India", currency: "INR" },
+  chennai: { city: "Chennai", country: "India", currency: "INR" },
+  madras: { city: "Chennai", country: "India", currency: "INR" },
+  hyderabad: { city: "Hyderabad", country: "India", currency: "INR" },
+  ahmedabad: { city: "Ahmedabad", country: "India", currency: "INR" },
+  pune: { city: "Pune", country: "India", currency: "INR" },
+  jaipur: { city: "Jaipur", country: "India", currency: "INR" },
+  goa: { city: "Goa", country: "India", currency: "INR" },
+  panaji: { city: "Panaji", country: "India", currency: "INR" },
+  surat: { city: "Surat", country: "India", currency: "INR" },
+  lucknow: { city: "Lucknow", country: "India", currency: "INR" },
+  kanpur: { city: "Kanpur", country: "India", currency: "INR" },
+  nagpur: { city: "Nagpur", country: "India", currency: "INR" },
+  indore: { city: "Indore", country: "India", currency: "INR" },
+  thane: { city: "Thane", country: "India", currency: "INR" },
+  bhopal: { city: "Bhopal", country: "India", currency: "INR" },
+  visakhapatnam: { city: "Visakhapatnam", country: "India", currency: "INR" },
+  patna: { city: "Patna", country: "India", currency: "INR" },
+  vadodara: { city: "Vadodara", country: "India", currency: "INR" },
+  ghaziabad: { city: "Ghaziabad", country: "India", currency: "INR" },
+  ludhiana: { city: "Ludhiana", country: "India", currency: "INR" },
+  agra: { city: "Agra", country: "India", currency: "INR" },
+  nashik: { city: "Nashik", country: "India", currency: "INR" },
+  faridabad: { city: "Faridabad", country: "India", currency: "INR" },
+  meerut: { city: "Meerut", country: "India", currency: "INR" },
+  rajkot: { city: "Rajkot", country: "India", currency: "INR" },
+  varanasi: { city: "Varanasi", country: "India", currency: "INR" },
+  banaras: { city: "Varanasi", country: "India", currency: "INR" },
+  srinagar: { city: "Srinagar", country: "India", currency: "INR" },
+  amritsar: { city: "Amritsar", country: "India", currency: "INR" },
+  "navi mumbai": { city: "Navi Mumbai", country: "India", currency: "INR" },
+  prayagraj: { city: "Prayagraj", country: "India", currency: "INR" },
+  allahabad: { city: "Prayagraj", country: "India", currency: "INR" },
+  ranchi: { city: "Ranchi", country: "India", currency: "INR" },
+  howrah: { city: "Howrah", country: "India", currency: "INR" },
+  coimbatore: { city: "Coimbatore", country: "India", currency: "INR" },
+  jabalpur: { city: "Jabalpur", country: "India", currency: "INR" },
+  gwalior: { city: "Gwalior", country: "India", currency: "INR" },
+  vijayawada: { city: "Vijayawada", country: "India", currency: "INR" },
+  jodhpur: { city: "Jodhpur", country: "India", currency: "INR" },
+  madurai: { city: "Madurai", country: "India", currency: "INR" },
+  raipur: { city: "Raipur", country: "India", currency: "INR" },
+  kota: { city: "Kota", country: "India", currency: "INR" },
+  chandigarh: { city: "Chandigarh", country: "India", currency: "INR" },
+  guwahati: { city: "Guwahati", country: "India", currency: "INR" },
+  mysore: { city: "Mysuru", country: "India", currency: "INR" },
+  mysuru: { city: "Mysuru", country: "India", currency: "INR" },
+  gurgaon: { city: "Gurugram", country: "India", currency: "INR" },
+  gurugram: { city: "Gurugram", country: "India", currency: "INR" },
+  noida: { city: "Noida", country: "India", currency: "INR" },
+  bhubaneswar: { city: "Bhubaneswar", country: "India", currency: "INR" },
+  thiruvananthapuram: { city: "Thiruvananthapuram", country: "India", currency: "INR" },
+  trivandrum: { city: "Thiruvananthapuram", country: "India", currency: "INR" },
+  kochi: { city: "Kochi", country: "India", currency: "INR" },
+  cochin: { city: "Kochi", country: "India", currency: "INR" },
+  dehradun: { city: "Dehradun", country: "India", currency: "INR" },
+  shimla: { city: "Shimla", country: "India", currency: "INR" },
+  manali: { city: "Manali", country: "India", currency: "INR" },
+  rishikesh: { city: "Rishikesh", country: "India", currency: "INR" },
+  haridwar: { city: "Haridwar", country: "India", currency: "INR" },
+  darjeeling: { city: "Darjeeling", country: "India", currency: "INR" },
+  gangtok: { city: "Gangtok", country: "India", currency: "INR" },
+  shillong: { city: "Shillong", country: "India", currency: "INR" },
+  udaipur: { city: "Udaipur", country: "India", currency: "INR" },
+  jaisalmer: { city: "Jaisalmer", country: "India", currency: "INR" },
+  pushkar: { city: "Pushkar", country: "India", currency: "INR" },
+  leh: { city: "Leh", country: "India", currency: "INR" },
+  ladakh: { city: "Ladakh", country: "India", currency: "INR" },
+  ooty: { city: "Ooty", country: "India", currency: "INR" },
+  munnar: { city: "Munnar", country: "India", currency: "INR" },
+  kodaikanal: { city: "Kodaikanal", country: "India", currency: "INR" },
+  alleppey: { city: "Alleppey", country: "India", currency: "INR" },
+  alappuzha: { city: "Alappuzha", country: "India", currency: "INR" },
+  pondicherry: { city: "Puducherry", country: "India", currency: "INR" },
+  puducherry: { city: "Puducherry", country: "India", currency: "INR" },
+  puri: { city: "Puri", country: "India", currency: "INR" },
+  hampi: { city: "Hampi", country: "India", currency: "INR" },
+
+  // International - France
   paris: { city: "Paris", country: "France", currency: "EUR" },
   nice: { city: "Nice", country: "France", currency: "EUR" },
   lyon: { city: "Lyon", country: "France", currency: "EUR" },
   marseille: { city: "Marseille", country: "France", currency: "EUR" },
-  rome: { city: "Rome", country: "Italy", currency: "EUR" },
-  milan: { city: "Milan", country: "Italy", currency: "EUR" },
-  venice: { city: "Venice", country: "Italy", currency: "EUR" },
-  florence: { city: "Florence", country: "Italy", currency: "EUR" },
-  "amalfi coast": { city: "Amalfi Coast", country: "Italy", currency: "EUR" },
+  bordeaux: { city: "Bordeaux", country: "France", currency: "EUR" },
+  toulouse: { city: "Toulouse", country: "France", currency: "EUR" },
+  cannes: { city: "Cannes", country: "France", currency: "EUR" },
+
+  // International - United Kingdom
   london: { city: "London", country: "United Kingdom", currency: "GBP" },
   edinburgh: { city: "Edinburgh", country: "United Kingdom", currency: "GBP" },
   manchester: { city: "Manchester", country: "United Kingdom", currency: "GBP" },
-  tokyo: { city: "Tokyo", country: "Japan", currency: "JPY" },
-  kyoto: { city: "Kyoto", country: "Japan", currency: "JPY" },
-  osaka: { city: "Osaka", country: "Japan", currency: "JPY" },
+  birmingham: { city: "Birmingham", country: "United Kingdom", currency: "GBP" },
+  glasgow: { city: "Glasgow", country: "United Kingdom", currency: "GBP" },
+  liverpool: { city: "Liverpool", country: "United Kingdom", currency: "GBP" },
+  bristol: { city: "Bristol", country: "United Kingdom", currency: "GBP" },
+  belfast: { city: "Belfast", country: "United Kingdom", currency: "GBP" },
+  oxford: { city: "Oxford", country: "United Kingdom", currency: "GBP" },
+  cambridge: { city: "Cambridge", country: "United Kingdom", currency: "GBP" },
+
+  // International - United States
   "new york": { city: "New York", country: "United States", currency: "USD" },
+  "new york city": { city: "New York", country: "United States", currency: "USD" },
+  nyc: { city: "New York", country: "United States", currency: "USD" },
   "los angeles": { city: "Los Angeles", country: "United States", currency: "USD" },
   "san francisco": { city: "San Francisco", country: "United States", currency: "USD" },
   "las vegas": { city: "Las Vegas", country: "United States", currency: "USD" },
   miami: { city: "Miami", country: "United States", currency: "USD" },
   chicago: { city: "Chicago", country: "United States", currency: "USD" },
+  boston: { city: "Boston", country: "United States", currency: "USD" },
+  seattle: { city: "Seattle", country: "United States", currency: "USD" },
+  washington: { city: "Washington", country: "United States", currency: "USD" },
+  "washington dc": { city: "Washington DC", country: "United States", currency: "USD" },
+  austin: { city: "Austin", country: "United States", currency: "USD" },
+  orlando: { city: "Orlando", country: "United States", currency: "USD" },
+  honolulu: { city: "Honolulu", country: "United States", currency: "USD" },
+  "san diego": { city: "San Diego", country: "United States", currency: "USD" },
+  dallas: { city: "Dallas", country: "United States", currency: "USD" },
+  houston: { city: "Houston", country: "United States", currency: "USD" },
+  atlanta: { city: "Atlanta", country: "United States", currency: "USD" },
+
+  // International - Japan
+  tokyo: { city: "Tokyo", country: "Japan", currency: "JPY" },
+  kyoto: { city: "Kyoto", country: "Japan", currency: "JPY" },
+  osaka: { city: "Osaka", country: "Japan", currency: "JPY" },
+  sapporo: { city: "Sapporo", country: "Japan", currency: "JPY" },
+  hiroshima: { city: "Hiroshima", country: "Japan", currency: "JPY" },
+  yokohama: { city: "Yokohama", country: "Japan", currency: "JPY" },
+
+  // International - Italy
+  rome: { city: "Rome", country: "Italy", currency: "EUR" },
+  milan: { city: "Milan", country: "Italy", currency: "EUR" },
+  venice: { city: "Venice", country: "Italy", currency: "EUR" },
+  florence: { city: "Florence", country: "Italy", currency: "EUR" },
+  naples: { city: "Naples", country: "Italy", currency: "EUR" },
+  "amalfi coast": { city: "Amalfi Coast", country: "Italy", currency: "EUR" },
+
+  // International - Spain
+  barcelona: { city: "Barcelona", country: "Spain", currency: "EUR" },
+  madrid: { city: "Madrid", country: "Spain", currency: "EUR" },
+  seville: { city: "Seville", country: "Spain", currency: "EUR" },
+  valencia: { city: "Valencia", country: "Spain", currency: "EUR" },
+  malaga: { city: "Malaga", country: "Spain", currency: "EUR" },
+  ibiza: { city: "Ibiza", country: "Spain", currency: "EUR" },
+
+  // International - Germany
+  berlin: { city: "Berlin", country: "Germany", currency: "EUR" },
+  munich: { city: "Munich", country: "Germany", currency: "EUR" },
+  frankfurt: { city: "Frankfurt", country: "Germany", currency: "EUR" },
+  hamburg: { city: "Hamburg", country: "Germany", currency: "EUR" },
+  cologne: { city: "Cologne", country: "Germany", currency: "EUR" },
+
+  // International - Netherlands & Switzerland & Austria
+  amsterdam: { city: "Amsterdam", country: "Netherlands", currency: "EUR" },
+  rotterdam: { city: "Rotterdam", country: "Netherlands", currency: "EUR" },
+  zurich: { city: "Zurich", country: "Switzerland", currency: "CHF" },
+  geneva: { city: "Geneva", country: "Switzerland", currency: "CHF" },
+  lucerne: { city: "Lucerne", country: "Switzerland", currency: "CHF" },
+  interlaken: { city: "Interlaken", country: "Switzerland", currency: "CHF" },
+  vienna: { city: "Vienna", country: "Austria", currency: "EUR" },
+  salzburg: { city: "Salzburg", country: "Austria", currency: "EUR" },
+
+  // International - Australia & Canada & UAE & Singapore & Southeast Asia
+  sydney: { city: "Sydney", country: "Australia", currency: "AUD" },
+  melbourne: { city: "Melbourne", country: "Australia", currency: "AUD" },
+  brisbane: { city: "Brisbane", country: "Australia", currency: "AUD" },
+  toronto: { city: "Toronto", country: "Canada", currency: "CAD" },
+  vancouver: { city: "Vancouver", country: "Canada", currency: "CAD" },
+  montreal: { city: "Montreal", country: "Canada", currency: "CAD" },
   dubai: { city: "Dubai", country: "United Arab Emirates", currency: "AED" },
   "abu dhabi": { city: "Abu Dhabi", country: "United Arab Emirates", currency: "AED" },
   singapore: { city: "Singapore", country: "Singapore", currency: "SGD" },
@@ -156,39 +359,41 @@ const CITY_DESTINATION_MAP: Record<
   "chiang mai": { city: "Chiang Mai", country: "Thailand", currency: "THB" },
   bali: { city: "Bali", country: "Indonesia", currency: "IDR" },
   jakarta: { city: "Jakarta", country: "Indonesia", currency: "IDR" },
+  ubud: { city: "Ubud", country: "Indonesia", currency: "IDR" },
   "kuala lumpur": { city: "Kuala Lumpur", country: "Malaysia", currency: "MYR" },
+  penang: { city: "Penang", country: "Malaysia", currency: "MYR" },
   hanoi: { city: "Hanoi", country: "Vietnam", currency: "VND" },
   "ho chi minh city": { city: "Ho Chi Minh City", country: "Vietnam", currency: "VND" },
+  "da nang": { city: "Da Nang", country: "Vietnam", currency: "VND" },
   seoul: { city: "Seoul", country: "South Korea", currency: "KRW" },
-  sydney: { city: "Sydney", country: "Australia", currency: "AUD" },
-  melbourne: { city: "Melbourne", country: "Australia", currency: "AUD" },
-  toronto: { city: "Toronto", country: "Canada", currency: "CAD" },
-  vancouver: { city: "Vancouver", country: "Canada", currency: "CAD" },
-  berlin: { city: "Berlin", country: "Germany", currency: "EUR" },
-  munich: { city: "Munich", country: "Germany", currency: "EUR" },
-  amsterdam: { city: "Amsterdam", country: "Netherlands", currency: "EUR" },
-  barcelona: { city: "Barcelona", country: "Spain", currency: "EUR" },
-  madrid: { city: "Madrid", country: "Spain", currency: "EUR" },
-  lisbon: { city: "Lisbon", country: "Portugal", currency: "EUR" },
-  vienna: { city: "Vienna", country: "Austria", currency: "EUR" },
-  zurich: { city: "Zurich", country: "Switzerland", currency: "CHF" },
+  busan: { city: "Busan", country: "South Korea", currency: "KRW" },
+  "hong kong": { city: "Hong Kong", country: "Hong Kong", currency: "HKD" },
+  taipei: { city: "Taipei", country: "Taiwan", currency: "TWD" },
+  auckland: { city: "Auckland", country: "New Zealand", currency: "NZD" },
+  queenstown: { city: "Queenstown", country: "New Zealand", currency: "NZD" },
+  istanbul: { city: "Istanbul", country: "Turkey", currency: "TRY" },
+  antalya: { city: "Antalya", country: "Turkey", currency: "TRY" },
+  cappadocia: { city: "Cappadocia", country: "Turkey", currency: "TRY" },
   athens: { city: "Athens", country: "Greece", currency: "EUR" },
   santorini: { city: "Santorini", country: "Greece", currency: "EUR" },
+  lisbon: { city: "Lisbon", country: "Portugal", currency: "EUR" },
+  porto: { city: "Porto", country: "Portugal", currency: "EUR" },
+  dublin: { city: "Dublin", country: "Ireland", currency: "EUR" },
   prague: { city: "Prague", country: "Czech Republic", currency: "CZK" },
   budapest: { city: "Budapest", country: "Hungary", currency: "HUF" },
-  dublin: { city: "Dublin", country: "Ireland", currency: "EUR" },
+  warsaw: { city: "Warsaw", country: "Poland", currency: "PLN" },
   cairo: { city: "Cairo", country: "Egypt", currency: "EGP" },
   marrakech: { city: "Marrakech", country: "Morocco", currency: "MAD" },
-  istanbul: { city: "Istanbul", country: "Turkey", currency: "TRY" },
-  delhi: { city: "Delhi", country: "India", currency: "INR" },
-  mumbai: { city: "Mumbai", country: "India", currency: "INR" },
-  goa: { city: "Goa", country: "India", currency: "INR" },
-  jaipur: { city: "Jaipur", country: "India", currency: "INR" },
   "cape town": { city: "Cape Town", country: "South Africa", currency: "ZAR" },
   "rio de janeiro": { city: "Rio de Janeiro", country: "Brazil", currency: "BRL" },
   "buenos aires": { city: "Buenos Aires", country: "Argentina", currency: "ARS" },
   "mexico city": { city: "Mexico City", country: "Mexico", currency: "MXN" },
-  auckland: { city: "Auckland", country: "New Zealand", currency: "NZD" },
+  cancun: { city: "Cancun", country: "Mexico", currency: "MXN" },
+  colombo: { city: "Colombo", country: "Sri Lanka", currency: "LKR" },
+  kathmandu: { city: "Kathmandu", country: "Nepal", currency: "NPR" },
+  male: { city: "Male", country: "Maldives", currency: "MVR" },
+  doha: { city: "Doha", country: "Qatar", currency: "QAR" },
+  riyadh: { city: "Riyadh", country: "Saudi Arabia", currency: "SAR" },
 };
 
 interface DestinationResolution {
@@ -197,63 +402,155 @@ interface DestinationResolution {
   currency: string;
 }
 
-// Destination resolution layer: reliably determines city, country, and ISO currency code
+// Destination resolution layer: reliably determines destination country first, then official ISO currency code
 function resolveDestination(
   rawDestination: string,
-  rawCountry?: string | null
+  rawCountry?: string | null,
+  rawOrigin?: string | null,
+  rawTripCurrency?: string | null
 ): DestinationResolution {
   const destClean = (rawDestination || "").trim();
   const countryClean = (rawCountry || "").trim();
+  const originClean = (rawOrigin || "").trim();
+  const tripCurrencyClean = (rawTripCurrency || "").trim().toUpperCase();
 
-  // 1. If explicit country is provided in trip.country
+  // Helper: check if a text matches a known country or territory
+  const matchCountry = (query: string): { country: string; currency: string } | null => {
+    const key = query.toLowerCase().trim();
+    if (!key) return null;
+    if (COUNTRY_INFO_MAP[key]) return COUNTRY_INFO_MAP[key];
+    if (INDIAN_STATES_AND_UTS.has(key)) return { country: "India", currency: "INR" };
+    return null;
+  };
+
+  // Helper: check if location indicates India
+  const isIndianLocation = (text: string): boolean => {
+    const lower = text.toLowerCase().trim();
+    if (!lower) return false;
+    if (lower === "india" || lower === "in" || lower.includes("india")) return true;
+    if (INDIAN_STATES_AND_UTS.has(lower)) return true;
+    for (const state of INDIAN_STATES_AND_UTS) {
+      if (lower.includes(state)) return true;
+    }
+    const cityMatch = CITY_DESTINATION_MAP[lower];
+    if (cityMatch && cityMatch.country === "India") return true;
+    const indianIatas = ["del", "bom", "blr", "ccu", "maa", "hyd", "pnq", "goi", "gox", "jmr", "jai", "lko", "amd", "ixc", "pat", "vns", "cok"];
+    if (indianIatas.includes(lower)) return true;
+    return false;
+  };
+
+  // 1. Explicit country provided in trip.country
   if (countryClean) {
-    const countryKey = countryClean.toLowerCase();
-    const currency = COUNTRY_CURRENCY_MAP[countryKey];
-    if (currency) {
+    const matched = matchCountry(countryClean);
+    if (matched) {
       return {
-        city: destClean || countryClean,
-        country: countryClean,
-        currency,
+        city: destClean || matched.country,
+        country: matched.country,
+        currency: matched.currency,
       };
     }
   }
 
-  // 2. If destination is formatted as "City, Country"
+  // 2. If destination is formatted as "City, Country" or "City, State, Country"
   if (destClean.includes(",")) {
     const parts = destClean.split(",").map((p) => p.trim());
     const cityPart = parts[0];
-    const countryPart = parts[parts.length - 1];
-    const countryKey = countryPart.toLowerCase();
-    const currency = COUNTRY_CURRENCY_MAP[countryKey];
-    if (currency) {
+    const lastPart = parts[parts.length - 1];
+
+    const lastMatched = matchCountry(lastPart);
+    if (lastMatched) {
       return {
         city: cityPart,
-        country: countryPart,
-        currency,
+        country: lastMatched.country,
+        currency: lastMatched.currency,
       };
+    }
+
+    for (let i = 1; i < parts.length; i++) {
+      const partMatched = matchCountry(parts[i]);
+      if (partMatched) {
+        return {
+          city: cityPart,
+          country: partMatched.country,
+          currency: partMatched.currency,
+        };
+      }
+    }
+
+    const cityKey = cityPart.toLowerCase();
+    if (CITY_DESTINATION_MAP[cityKey]) {
+      return { ...CITY_DESTINATION_MAP[cityKey] };
     }
   }
 
-  // 3. Match against popular destination city dictionary (e.g. "paris" -> France -> EUR)
+  // 3. Match against city dictionary
   const destKey = destClean.toLowerCase();
   if (CITY_DESTINATION_MAP[destKey]) {
     return { ...CITY_DESTINATION_MAP[destKey] };
   }
 
-  // 4. Check if destination itself is a known country name
-  if (COUNTRY_CURRENCY_MAP[destKey]) {
+  for (const [key, val] of Object.entries(CITY_DESTINATION_MAP)) {
+    if (destKey.includes(key) && key.length >= 4) {
+      return { ...val, city: destClean };
+    }
+  }
+
+  // 4. Check if destination itself is a country
+  const destCountryMatch = matchCountry(destKey);
+  if (destCountryMatch) {
     return {
       city: destClean,
-      country: destClean,
-      currency: COUNTRY_CURRENCY_MAP[destKey],
+      country: destCountryMatch.country,
+      currency: destCountryMatch.currency,
     };
   }
 
-  // Safe fallback default if wholly unresolvable
+  // 5. Check if destination contains Indian state or UT name
+  for (const state of INDIAN_STATES_AND_UTS) {
+    if (destKey.includes(state)) {
+      return {
+        city: destClean,
+        country: "India",
+        currency: "INR",
+      };
+    }
+  }
+
+  // 6. Generic Domestic Indian Destination Inference:
+  // If origin is in India OR trip currency is INR, and destination is not known international
+  const originIsIndia = isIndianLocation(originClean);
+  const tripIsINR = tripCurrencyClean === "INR";
+  if (originIsIndia || tripIsINR) {
+    return {
+      city: destClean,
+      country: "India",
+      currency: "INR",
+    };
+  }
+
+  // 7. Generic Domestic Inference for Other Currencies
+  if (tripCurrencyClean && tripCurrencyClean !== "EUR") {
+    for (const info of Object.values(COUNTRY_INFO_MAP)) {
+      if (info.currency === tripCurrencyClean) {
+        return {
+          city: destClean,
+          country: countryClean || info.country,
+          currency: tripCurrencyClean,
+        };
+      }
+    }
+  }
+
+  // 8. Safe generic fallback: respect trip currency or country mapping instead of hardcoding EUR
+  const fallbackCurrency =
+    tripCurrencyClean ||
+    (countryClean && COUNTRY_CURRENCY_MAP[countryClean.toLowerCase()]) ||
+    "USD";
+
   return {
     city: destClean,
-    country: countryClean || destClean,
-    currency: "EUR",
+    country: countryClean || (fallbackCurrency === "INR" ? "India" : destClean),
+    currency: fallbackCurrency,
   };
 }
 
@@ -2947,7 +3244,12 @@ Deno.serve(async (req: Request) => {
 
     // Stage C: Destination Resolution (e.g. Paris -> France -> EUR)
     console.log("[Stage C] Resolving destination...");
-    const destinationInfo = resolveDestination(trip.destination, trip.country);
+    const destinationInfo = resolveDestination(
+      trip.destination,
+      trip.country,
+      trip.origin,
+      trip.currency
+    );
 
     // If Flight Service is requested, handle Flight Intelligence
     if (body.service === "flight" || body.type === "flight") {
@@ -3013,6 +3315,17 @@ Deno.serve(async (req: Request) => {
     // If Trip Currency and Destination Currency are Identical, Skip External Fixer Call
     if (sourceCurrency === destinationCurrency) {
       console.log("[Stage C] Same currency detected. Skipping external Fixer call.");
+      // Ensure any previously cached incorrect destination currencies for this trip are cleared
+      try {
+        await supabase
+          .from("trip_currency_cache")
+          .delete()
+          .eq("trip_id", cleanTripId)
+          .neq("destination_currency", destinationCurrency);
+      } catch (cleanupErr) {
+        console.warn("[Currency Cache] Cleanup warning:", cleanupErr);
+      }
+
       return new Response(
         JSON.stringify({
           trip: {
@@ -3051,6 +3364,17 @@ Deno.serve(async (req: Request) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Ensure no stale cached destination currencies exist for this trip if destination currency changed
+    try {
+      await supabase
+        .from("trip_currency_cache")
+        .delete()
+        .eq("trip_id", cleanTripId)
+        .neq("destination_currency", destinationCurrency);
+    } catch (cleanupErr) {
+      console.warn("[Currency Cache] Cleanup warning:", cleanupErr);
     }
 
     // Stage D0: Check Database Cache for Currency Conversion (24-hour TTL)
