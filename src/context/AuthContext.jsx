@@ -194,6 +194,24 @@ export function AuthProvider({ children }) {
     return data
   }
 
+  // Sign in with Google OAuth using dynamic origin
+  const signInWithGoogle = async () => {
+    const redirectUrl =
+      typeof window !== 'undefined' && window.location.origin
+        ? `${window.location.origin}/`
+        : 'https://travel-mate-chi-three.vercel.app/'
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+      },
+    })
+
+    if (error) throw error
+    return data
+  }
+
   // Sign out
   const signOut = async () => {
     const { error } = await supabase.auth.signOut()
@@ -236,6 +254,7 @@ export function AuthProvider({ children }) {
     loading,
     signUp,
     signIn,
+    signInWithGoogle,
     signOut,
     ensureProfile,
     updateProfile,
