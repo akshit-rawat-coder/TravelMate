@@ -5,27 +5,33 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Dynamic CORS header configuration supporting local development and frontend origins
+// Explicit allowed-origin list for local development and production environments
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "https://travel-mate-chi-three.vercel.app",
+];
+
+// Dynamic CORS header configuration matching incoming origin against explicit allowed list
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
-  const allowedOrigins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-  ];
+  const isAllowed = ALLOWED_ORIGINS.includes(origin);
 
-  const allowOrigin = allowedOrigins.includes(origin)
-    ? origin
-    : allowedOrigins[0];
-
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
+
+  // Only return Access-Control-Allow-Origin if origin is explicitly allowed
+  if (isAllowed) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
 }
 
 // 1. Comprehensive Country to ISO 4217 Currency mapping
