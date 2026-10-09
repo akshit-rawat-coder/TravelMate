@@ -1,6 +1,7 @@
 import { LogOut, Plane, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
+import ThemeToggle from './ThemeToggle'
 
 function Navbar() {
   const { user, profile, signOut } = useAuth()
@@ -36,6 +37,9 @@ function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          {/* Theme Selector (Desktop) */}
+          <ThemeToggle />
+
           {user ? (
             <>
               <Link
@@ -49,7 +53,7 @@ function Navbar() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3.5 py-2 text-[0.85rem] font-semibold text-[var(--color-navy)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-error)]"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3.5 py-2 text-[0.85rem] font-semibold text-[var(--color-navy)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-error)] cursor-pointer"
               >
                 <LogOut className="h-4 w-4" />
                 <span>Sign Out</span>
@@ -65,13 +69,16 @@ function Navbar() {
           )}
           <a
             href="/#trip-form"
-            className="rounded-lg bg-[var(--color-terracotta)] px-4 py-2 text-[0.85rem] font-semibold text-[var(--color-white)] transition-opacity hover:opacity-90"
+            className="rounded-lg bg-[var(--color-terracotta)] px-4 py-2 text-[0.85rem] font-semibold text-white transition-opacity hover:opacity-90"
           >
             Plan a Trip
           </a>
         </div>
 
         <div className="flex items-center gap-2 md:hidden">
+          {/* Mobile Theme Cycle Toggle */}
+          <ThemeToggle compact />
+
           {user && (
             <>
               <Link
@@ -84,7 +91,7 @@ function Navbar() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-2.5 py-1.5 text-[0.78rem] font-semibold text-[var(--color-navy)]"
+                className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-2.5 py-1.5 text-[0.78rem] font-semibold text-[var(--color-navy)] cursor-pointer"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 <span>Out</span>
@@ -93,7 +100,7 @@ function Navbar() {
           )}
           <a
             href="/#trip-form"
-            className="rounded-lg bg-[var(--color-terracotta)] px-4 py-2 text-[0.8rem] font-semibold text-[var(--color-white)]"
+            className="rounded-lg bg-[var(--color-terracotta)] px-4 py-2 text-[0.8rem] font-semibold text-white"
           >
             Plan
           </a>

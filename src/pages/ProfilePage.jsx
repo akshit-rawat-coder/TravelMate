@@ -228,11 +228,11 @@ function ProfileForm({ profile, user, updateProfile }) {
           <button
             type="submit"
             disabled={isSaving}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-6 text-sm font-semibold tracking-[0.02em] text-[var(--color-white)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-6 text-sm font-semibold tracking-[0.02em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           >
             {isSaving ? (
                 <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--color-white)] border-t-transparent" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   <span>Saving Changes...</span>
                 </>
               ) : (

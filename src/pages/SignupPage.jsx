@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { AlertCircle, ArrowRight, CheckCircle2, Lock, Mail, Plane, User } from 'lucide-react'
 import { useAuth } from '../context/useAuth'
+import ThemeToggle from '../components/ThemeToggle'
 
 function SignupPage() {
   const { user, signUp, signInWithGoogle, loading: authLoading } = useAuth()
@@ -96,11 +97,12 @@ function SignupPage() {
   return (
     <div className="flex min-h-screen flex-col justify-between bg-[var(--color-ivory)] px-4 py-8 sm:px-6 lg:px-8">
       {/* Brand Header */}
-      <header className="mx-auto flex w-full max-w-md items-center justify-center">
+      <header className="mx-auto flex w-full max-w-md items-center justify-between">
         <Link to="/" className="flex items-center gap-2 text-[var(--color-navy)]">
           <Plane className="h-6 w-6 text-[var(--color-terracotta)]" />
           <span className="font-display text-2xl leading-none">TravelMate</span>
         </Link>
+        <ThemeToggle compact />
       </header>
 
       {/* Main Card */}
@@ -231,7 +233,7 @@ function SignupPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-5 text-sm font-semibold tracking-[0.02em] text-[var(--color-white)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-5 text-sm font-semibold tracking-[0.02em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? (
                 'Creating Account...'

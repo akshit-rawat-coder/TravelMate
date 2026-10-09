@@ -11,6 +11,21 @@
       rel="stylesheet"
     />
     <title>TravelMate</title>
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('travelmate_theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (stored === 'dark' || (!stored && prefersDark) || (stored === 'system' && prefersDark)) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
