@@ -91,7 +91,7 @@ function MyTripsPage() {
 
         <Link
           to="/#trip-form"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-5 text-sm font-semibold tracking-[0.02em] text-[var(--color-white)] transition-opacity hover:opacity-90"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-5 text-sm font-semibold tracking-[0.02em] text-white transition-opacity hover:opacity-90"
         >
           <Plus className="h-4 w-4" />
           <span>Plan New Trip</span>
@@ -119,7 +119,7 @@ function MyTripsPage() {
           <div className="mt-6">
             <Link
               to="/#trip-form"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-navy)] px-6 text-sm font-semibold text-[var(--color-white)] transition-colors hover:bg-[color:rgb(22,45,69)]"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-navy)] px-6 text-sm font-semibold text-[var(--color-white)] transition-colors hover:bg-[color:rgb(22,45,69)] dark:hover:bg-[color:rgba(244,239,228,0.85)]"
             >
               Start Planning
               <ArrowRight className="h-4 w-4" />

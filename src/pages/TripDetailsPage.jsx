@@ -106,7 +106,7 @@ function TripDetailsPage() {
           </Link>
           <Link
             to="/"
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-[var(--color-terracotta)] px-5 text-xs font-semibold uppercase tracking-wider text-[var(--color-white)] transition-opacity hover:opacity-90"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-[var(--color-terracotta)] px-5 text-xs font-semibold uppercase tracking-wider text-white transition-opacity hover:opacity-90"
           >
             Plan New Trip
           </Link>

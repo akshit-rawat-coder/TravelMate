@@ -541,7 +541,7 @@ function FlightPricesCard({ trip }) {
                             href={bookingUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-navy)] px-3.5 py-2 text-xs font-semibold text-[var(--color-white)] transition-all hover:bg-[var(--color-terracotta)] hover:shadow-sm"
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-navy)] px-3.5 py-2 text-xs font-semibold text-[var(--color-white)] transition-all hover:bg-[var(--color-terracotta)] hover:text-white hover:shadow-sm"
                             title={
                               isDirectUrl
                                 ? 'Open airline/provider booking page'

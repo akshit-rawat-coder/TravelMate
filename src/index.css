@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --color-ivory: #f7f3ea;
   --color-navy: #17324d;
@@ -14,6 +16,20 @@
   --color-error: #9b4f4f;
   --font-display: 'DM Serif Display', Georgia, serif;
   --font-body: 'Manrope', system-ui, sans-serif;
+}
+
+.dark {
+  --color-ivory: #0e161e;
+  --color-navy: #f4efe4;
+  --color-terracotta: #da795a;
+  --color-olive: #8a9d77;
+  --color-charcoal: #ded7c9;
+  --color-white: #16222d;
+  --color-border: #233444;
+  --color-border-strong: #384c5f;
+  --color-success: #7ea875;
+  --color-warning: #c9935a;
+  --color-error: #dc6a6a;
 }
 
 @theme inline {
@@ -41,6 +57,7 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   h1,
@@ -59,4 +76,109 @@
   a {
     color: inherit;
   }
+
+  /* Form control color scheme */
+  .dark input,
+  .dark select,
+  .dark textarea {
+    color-scheme: dark;
+  }
+}
+
+/* Accessible Dark Mode Contrast Overrides for Arbitrary Charcoal Opacity Classes */
+.dark [class*="text-[color:rgba(32,37,34,0.8"] {
+  color: rgba(222, 215, 201, 0.88);
+}
+.dark [class*="text-[color:rgba(32,37,34,0.7"] {
+  color: rgba(222, 215, 201, 0.78);
+}
+.dark [class*="text-[color:rgba(32,37,34,0.6"] {
+  color: rgba(222, 215, 201, 0.68);
+}
+.dark [class*="text-[color:rgba(32,37,34,0.5"] {
+  color: rgba(222, 215, 201, 0.58);
+}
+.dark [class*="text-[color:rgba(32,37,34,0.4"] {
+  color: rgba(222, 215, 201, 0.48);
+}
+.dark [class*="text-[color:rgba(32,37,34,0.3"] {
+  color: rgba(222, 215, 201, 0.38);
+}
+
+/* Placeholder text remapping in dark mode */
+.dark [class*="placeholder:text-[color:rgba(32,37,34,"]::placeholder {
+  color: rgba(222, 215, 201, 0.45);
+}
+
+/* Translucent ivory backgrounds remapped in dark mode */
+.dark [class*="bg-[color:rgba(247,243,234,"] {
+  background-color: rgba(22, 34, 45, 0.85);
+}
+
+/* Box shadows tuned for dark mode */
+.dark [class*="shadow-[0_8px_30px_rgba(23,50,77,"],
+.dark [class*="shadow-[0_4px_16px_rgba(23,50,77,"],
+.dark [class*="shadow-[0_8px_24px_rgba(23,50,77,"],
+.dark [class*="shadow-[0_4px_20px_rgba(23,50,77,"] {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* Remap dark navy subtle borders/dividers to readable off-white borders in dark mode */
+.dark [class*="border-[color:rgba(23,50,77,0.08)"],
+.dark [class*="border-[color:rgba(23,50,77,0.1)"] {
+  border-color: rgba(222, 215, 201, 0.12);
+}
+.dark [class*="border-[color:rgba(23,50,77,0.3)"] {
+  border-color: rgba(222, 215, 201, 0.28);
+}
+.dark [class*="bg-[color:rgba(23,50,77,0.08)"] {
+  background-color: rgba(244, 239, 228, 0.1);
+}
+
+/* Alerts and badges in dark mode */
+.dark [class*="bg-[color:rgba(155,79,79,"] {
+  background-color: rgba(248, 113, 113, 0.14);
+}
+.dark [class*="border-[color:rgba(155,79,79,"] {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.dark [class*="bg-[color:rgba(110,131,102,"] {
+  background-color: rgba(74, 222, 128, 0.14);
+}
+.dark [class*="border-[color:rgba(110,131,102,"] {
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.dark .bg-amber-50,
+.dark .bg-amber-50\/70,
+.dark .bg-amber-50\/80 {
+  background-color: rgba(245, 158, 11, 0.14);
+}
+.dark .border-amber-200,
+.dark .border-amber-300 {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.dark .text-amber-800,
+.dark .text-amber-900,
+.dark .text-amber-950 {
+  color: #fbbf24;
+}
+
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.14);
+}
+.dark .text-emerald-700 {
+  color: #34d399;
+}
+
+/* Native inputs, date picker icon, and select option styling */
+.dark select option {
+  background-color: #16222d;
+  color: #ded7c9;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85) brightness(1.2);
+  cursor: pointer;
 }

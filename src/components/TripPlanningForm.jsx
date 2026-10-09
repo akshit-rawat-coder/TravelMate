@@ -266,7 +266,7 @@ function TripPlanningForm() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-navy)] px-6 text-sm font-semibold tracking-[0.02em] text-[var(--color-white)] transition-colors hover:bg-[color:rgb(22,45,69)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-navy)] px-6 text-sm font-semibold tracking-[0.02em] text-[var(--color-white)] transition-colors hover:bg-[color:rgb(22,45,69)] dark:hover:bg-[color:rgba(244,239,228,0.85)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           >
             {isSubmitting ? (
               <>

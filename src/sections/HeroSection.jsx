@@ -23,7 +23,7 @@ function HeroSection() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:rgba(255,253,248,0.88)] sm:text-sm">
             Premium Travel Planning
           </p>
-          <h1 className="mt-4 max-w-2xl font-display text-[2.7rem] leading-[1.02] text-[var(--color-white)] sm:text-[3.8rem] lg:text-[4.6rem]">
+          <h1 className="mt-4 max-w-2xl font-display text-[2.7rem] leading-[1.02] text-[#FFFDF8] sm:text-[3.8rem] lg:text-[4.6rem]">
             YOUR NEXT JOURNEY STARTS HERE.
           </h1>
           <p className="mt-5 text-base text-[color:rgba(255,253,248,0.92)] sm:text-lg">
