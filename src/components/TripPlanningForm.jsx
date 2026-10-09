@@ -4,6 +4,8 @@ import { AlertCircle, ArrowRight } from 'lucide-react'
 import { useAuth } from '../context/useAuth'
 import supabase from '../lib/supabase'
 
+import { getLocalDateString, validateTripDates } from '../utils/date'
+
 function TripPlanningForm() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
@@ -19,6 +21,23 @@ function TripPlanningForm() {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState(null)
+
+  const today = getLocalDateString()
+
+  const handleStartDateChange = (e) => {
+    const newStartDate = e.target.value
+    setStartDate(newStartDate)
+    setErrorMessage(null)
+    // If start date moves past currently selected end date, clear end date
+    if (endDate && newStartDate && endDate < newStartDate) {
+      setEndDate('')
+    }
+  }
+
+  const handleEndDateChange = (e) => {
+    setEndDate(e.target.value)
+    setErrorMessage(null)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -43,13 +62,9 @@ function TripPlanningForm() {
       return
     }
 
-    if (!startDate || !endDate) {
-      setErrorMessage('Please select both start and end travel dates.')
-      return
-    }
-
-    if (startDate > endDate) {
-      setErrorMessage('End date must be on or after the start date.')
+    const dateValidationError = validateTripDates(startDate, endDate, getLocalDateString())
+    if (dateValidationError) {
+      setErrorMessage(dateValidationError)
       return
     }
 
@@ -159,8 +174,9 @@ function TripPlanningForm() {
           <input
             type="date"
             required
+            min={today}
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={handleStartDateChange}
             className="h-12 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3 text-sm text-[var(--color-charcoal)] outline-none transition-colors focus:border-[var(--color-terracotta)]"
           />
         </label>
@@ -170,8 +186,9 @@ function TripPlanningForm() {
           <input
             type="date"
             required
+            min={startDate || today}
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={handleEndDateChange}
             className="h-12 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3 text-sm text-[var(--color-charcoal)] outline-none transition-colors focus:border-[var(--color-terracotta)]"
           />
         </label>
