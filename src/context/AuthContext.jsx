@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useRef, useState } from 'react'
 import supabase from '../lib/supabase'
+import { getOAuthRedirectUrl } from '../utils/authHelpers'
 
 const AuthContext = createContext(null)
 
@@ -194,21 +195,54 @@ export function AuthProvider({ children }) {
     return data
   }
 
-  // Sign in with Google OAuth using dynamic origin
-  const signInWithGoogle = async () => {
-    const redirectUrl =
-      typeof window !== 'undefined' && window.location.origin
-        ? `${window.location.origin}/`
-        : 'https://travel-mate-chi-three.vercel.app/'
+  // Sign in with Google OAuth using dynamic origin and graceful pre-check
+  const signInWithGoogle = async (options = {}) => {
+    const targetPath = options.redirectTo || '/'
+    const redirectUrl = getOAuthRedirectUrl(targetPath)
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: redirectUrl,
+        skipBrowserRedirect: true,
       },
     })
 
     if (error) throw error
+
+    if (data?.url) {
+      // Pre-flight check if provider is enabled to prevent raw JSON error page
+      try {
+        const check = await fetch(data.url, { method: 'GET', redirect: 'manual' })
+        if (check.status >= 400) {
+          const body = await check.json().catch(() => ({}))
+          if (
+            body?.msg?.includes('provider is not enabled') ||
+            body?.error_code === 'validation_failed'
+          ) {
+            throw new Error(
+              'Google sign-in is not yet enabled in the Supabase Dashboard. Please complete the Google OAuth provider setup in Authentication → Providers.'
+            )
+          }
+          throw new Error(
+            body?.msg || body?.error_description || 'Unable to connect to Google sign-in provider.'
+          )
+        }
+      } catch (checkErr) {
+        if (
+          checkErr.message?.includes('Google sign-in') ||
+          checkErr.message?.includes('Supabase')
+        ) {
+          throw checkErr
+        }
+        // In case of CORS opaque redirect or network quirk, proceed with redirect
+      }
+
+      if (typeof window !== 'undefined') {
+        window.location.assign(data.url)
+      }
+    }
+
     return data
   }
 

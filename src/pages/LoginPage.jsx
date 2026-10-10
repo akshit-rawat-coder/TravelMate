@@ -1,19 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AlertCircle, ArrowRight, Compass, Lock, Mail, Plane } from 'lucide-react'
 import { useAuth } from '../context/useAuth'
 import ThemeToggle from '../components/ThemeToggle'
+import { parseOAuthError } from '../utils/authHelpers'
 
 function LoginPage() {
   const { user, signIn, signInWithGoogle, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => location.state?.email || '')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState(null)
+  const [error, setError] = useState(
+    () =>
+      parseOAuthError(location.search, location.hash) ||
+      parseOAuthError(location.state?.from?.search, location.state?.from?.hash) ||
+      null
+  )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
+
+  // Clear query params / hash after error has been captured to keep URL clean
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window.location.search || window.location.hash)) {
+      if (
+        window.location.search.includes('error') ||
+        window.location.hash.includes('error')
+      ) {
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+    }
+  }, [location.search, location.hash])
 
   // Redirect if already logged in
   if (!authLoading && user) {
@@ -25,7 +43,8 @@ function LoginPage() {
     setError(null)
     try {
       setIsGoogleSubmitting(true)
-      await signInWithGoogle()
+      const destination = location.state?.from?.pathname || '/'
+      await signInWithGoogle({ redirectTo: destination })
     } catch (err) {
       setError(err.message || 'An error occurred during Google sign in. Please try again.')
       setIsGoogleSubmitting(false)

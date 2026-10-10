@@ -1,21 +1,42 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AlertCircle, ArrowRight, CheckCircle2, Lock, Mail, Plane, User } from 'lucide-react'
 import { useAuth } from '../context/useAuth'
 import ThemeToggle from '../components/ThemeToggle'
+import { handleSignUpResponse, parseOAuthError, parseSignUpError } from '../utils/authHelpers'
 
 function SignupPage() {
   const { user, signUp, signInWithGoogle, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState(null)
+  const [error, setError] = useState(
+    () =>
+      parseOAuthError(location.search, location.hash) ||
+      parseOAuthError(location.state?.from?.search, location.state?.from?.hash) ||
+      null
+  )
+  const [isExistingUser, setIsExistingUser] = useState(false)
+  const [noticeMessage, setNoticeMessage] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
+
+  // Clear query params / hash after error has been captured to keep URL clean
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window.location.search || window.location.hash)) {
+      if (
+        window.location.search.includes('error') ||
+        window.location.hash.includes('error')
+      ) {
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+    }
+  }, [location.search, location.hash])
 
   // Redirect if already logged in
   if (!authLoading && user) {
@@ -26,7 +47,7 @@ function SignupPage() {
     setError(null)
     try {
       setIsGoogleSubmitting(true)
-      await signInWithGoogle()
+      await signInWithGoogle({ redirectTo: '/' })
     } catch (err) {
       setError(err.message || 'An error occurred during Google sign in. Please try again.')
       setIsGoogleSubmitting(false)
@@ -36,6 +57,8 @@ function SignupPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+    setIsExistingUser(false)
+    setNoticeMessage(null)
     setSuccessMessage(null)
 
     if (!name.trim()) {
@@ -71,23 +94,21 @@ function SignupPage() {
         password,
       })
 
-      // If user session is active immediately, redirect to home
-      if (res?.session) {
+      const outcome = handleSignUpResponse(res)
+
+      if (outcome.status === 'authenticated') {
         navigate('/', { replace: true })
+      } else if (outcome.status === 'existing_user_notice') {
+        setIsExistingUser(true)
+        setNoticeMessage(outcome.message)
       } else {
-        // If email confirmation is required by Supabase
-        setSuccessMessage(
-          'Account created successfully! Please check your email to verify your account, then sign in.',
-        )
+        setSuccessMessage(outcome.message)
       }
     } catch (err) {
-      const msg = err.message || ''
-      if (msg.includes('already registered') || msg.includes('User already registered')) {
-        setError('An account with this email already exists. Try signing in instead.')
-      } else if (msg.includes('weak') || msg.includes('Password should be')) {
-        setError('Password is too weak. Please use at least 6 characters.')
-      } else {
-        setError(msg || 'An error occurred during account creation. Please try again.')
+      const parsed = parseSignUpError(err)
+      setError(parsed.message)
+      if (parsed.isDuplicate) {
+        setIsExistingUser(true)
       }
     } finally {
       setIsSubmitting(false)
@@ -118,16 +139,61 @@ function SignupPage() {
           </div>
 
           {error && (
-            <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-[color:rgba(155,79,79,0.3)] bg-[color:rgba(155,79,79,0.08)] p-3.5 text-sm text-[var(--color-error)]">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
+            <div className="mb-5 rounded-lg border border-[color:rgba(155,79,79,0.3)] bg-[color:rgba(155,79,79,0.08)] p-3.5 text-sm text-[var(--color-error)]">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="flex-1">
+                  <p>{error}</p>
+                  {isExistingUser && (
+                    <Link
+                      to="/login"
+                      state={{ email: email.trim() }}
+                      className="mt-2.5 inline-flex items-center gap-1.5 font-semibold text-[var(--color-terracotta)] hover:underline"
+                    >
+                      <span>Sign in to your account</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {noticeMessage && (
+            <div className="mb-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-ivory)] p-3.5 text-sm text-[var(--color-navy)]">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-terracotta)]" />
+                <div className="flex-1">
+                  <p className="leading-relaxed">{noticeMessage}</p>
+                  <Link
+                    to="/login"
+                    state={{ email: email.trim() }}
+                    className="mt-2.5 inline-flex items-center gap-1.5 font-semibold text-[var(--color-terracotta)] hover:underline"
+                  >
+                    <span>Sign In</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
 
           {successMessage && (
-            <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-[color:rgba(110,131,102,0.35)] bg-[color:rgba(110,131,102,0.12)] p-3.5 text-sm text-[var(--color-success)]">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{successMessage}</span>
+            <div className="mb-5 rounded-lg border border-[color:rgba(110,131,102,0.35)] bg-[color:rgba(110,131,102,0.12)] p-3.5 text-sm text-[var(--color-success)]">
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="flex-1">
+                  <p className="leading-relaxed">{successMessage}</p>
+                  <Link
+                    to="/login"
+                    state={{ email: email.trim() }}
+                    className="mt-2.5 inline-flex items-center gap-1.5 font-semibold text-[var(--color-olive)] hover:underline"
+                  >
+                    <span>Proceed to Sign In</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
 
