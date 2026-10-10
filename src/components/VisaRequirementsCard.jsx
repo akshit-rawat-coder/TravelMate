@@ -17,6 +17,10 @@ import {
   UserCheck,
 } from 'lucide-react'
 import { useAuth } from '../context/useAuth'
+import {
+  POPULAR_NATIONALITIES,
+  resolveOriginCountry,
+} from '../utils/geo'
 
 function formatLastUpdated(timestamp) {
   if (!timestamp) return null
@@ -34,13 +38,21 @@ function formatLastUpdated(timestamp) {
   }
 }
 
-export default function VisaRequirementsCard({ trip }) {
+export default function VisaRequirementsCard({ trip, isGuest = false }) {
   const { session } = useAuth()
+  const isGuestMode = Boolean(isGuest || trip?.isGuest)
   const tripId = trip?.id
   const accessToken = session?.access_token
 
+  const originCountry = resolveOriginCountry(trip?.origin)
+  const defaultPassport =
+    trip?.passport_country ||
+    trip?.passportCountry ||
+    (originCountry === 'India' ? 'India' : '')
+
+  const [passportNationality, setPassportNationality] = useState(defaultPassport)
   const [visaPayload, setVisaPayload] = useState(null)
-  const [loading, setLoading] = useState(Boolean(tripId && accessToken))
+  const [loading, setLoading] = useState(Boolean(((tripId && accessToken) || isGuestMode) && (trip?.destination || trip?.country)))
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
   const [refreshError, setRefreshError] = useState(null)
@@ -57,12 +69,19 @@ export default function VisaRequirementsCard({ trip }) {
 
   // Initial cache-first fetch
   useEffect(() => {
-    if (!tripId || !accessToken) return
+    if (!trip?.destination && !trip?.country) {
+      return
+    }
 
-    if (inFlightTripIdRef.current === tripId) return
-    inFlightTripIdRef.current = tripId
+    if (!isGuestMode && (!tripId || !accessToken)) {
+      return
+    }
 
-    async function loadVisaRequirements() {
+    const currentKey = `${tripId || trip?.destination}-${passportNationality}`
+    if (inFlightTripIdRef.current === currentKey) return
+    inFlightTripIdRef.current = currentKey
+
+    async function loadVisaRequirements(targetPassport = passportNationality) {
       try {
         setLoading(true)
         setError(null)
@@ -70,22 +89,62 @@ export default function VisaRequirementsCard({ trip }) {
 
         const supabaseUrl =
           import.meta.env.VITE_SUPABASE_URL || 'https://zmwfnttudlpyweolndtd.supabase.co'
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
         const endpointUrl = `${supabaseUrl}/functions/v1/travel-intelligence`
+
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : anonKey
+            ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+            : {}),
+        }
+
+        const effectivePassport =
+          targetPassport ||
+          passportNationality ||
+          trip?.passport_country ||
+          trip?.passportCountry ||
+          (originCountry === 'India' ? 'India' : '')
+
+        const bodyPayload = isGuestMode
+          ? {
+              isGuest: true,
+              guest: true,
+              service: 'visa',
+              trip: {
+                id: tripId || 'guest-demo',
+                destination: trip?.destination,
+                country: trip?.country,
+                origin: trip?.origin,
+                origin_country: originCountry,
+                passport_country: effectivePassport,
+              },
+              refresh: false,
+            }
+          : {
+              tripId,
+              service: 'visa',
+              passport_country: effectivePassport,
+              refresh: false,
+            }
 
         const response = await fetch(endpointUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            tripId,
-            service: 'visa',
-            refresh: false,
-          }),
+          headers,
+          body: JSON.stringify(bodyPayload),
         })
 
         if (!response.ok) {
+          if (response.status === 401 && isGuestMode) {
+            throw new Error(
+              'Visa entry intelligence is temporarily unavailable or awaiting authorization. You can retry shortly.'
+            )
+          }
+          if (response.status === 429) {
+            throw new Error('Rate limit reached for visa queries. Please wait a moment and retry.')
+          }
           const errBody = await response.json().catch(() => ({}))
           throw new Error(errBody.error || `Unable to retrieve visa intelligence (HTTP ${response.status})`)
         }
@@ -111,11 +170,12 @@ export default function VisaRequirementsCard({ trip }) {
     }
 
     loadVisaRequirements()
-  }, [tripId, accessToken])
+  }, [tripId, trip?.destination, trip?.country, trip?.origin, trip?.passport_country, trip?.passportCountry, accessToken, isGuestMode, passportNationality, originCountry])
 
   // Explicit user-triggered refresh
   async function handleRefreshVisa() {
-    if (refreshing || !tripId || !accessToken) return
+    if (refreshing) return
+    if (!isGuestMode && (!tripId || !accessToken)) return
 
     try {
       setRefreshing(true)
@@ -123,22 +183,59 @@ export default function VisaRequirementsCard({ trip }) {
 
       const supabaseUrl =
         import.meta.env.VITE_SUPABASE_URL || 'https://zmwfnttudlpyweolndtd.supabase.co'
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const endpointUrl = `${supabaseUrl}/functions/v1/travel-intelligence`
+
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : anonKey
+          ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+          : {}),
+      }
+
+      const effectivePassport =
+        passportNationality ||
+        trip?.passport_country ||
+        trip?.passportCountry ||
+        (originCountry === 'India' ? 'India' : '')
+
+      const bodyPayload = isGuestMode
+        ? {
+            isGuest: true,
+            guest: true,
+            service: 'visa',
+            trip: {
+              id: trip?.id || 'guest-demo',
+              destination: trip?.destination,
+              country: trip?.country,
+              origin: trip?.origin,
+              origin_country: originCountry,
+              passport_country: effectivePassport,
+            },
+            refresh: true,
+          }
+        : {
+            tripId,
+            service: 'visa',
+            passport_country: effectivePassport,
+            refresh: true,
+          }
 
       const response = await fetch(endpointUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          tripId,
-          service: 'visa',
-          refresh: true,
-        }),
+        headers,
+        body: JSON.stringify(bodyPayload),
       })
 
       if (!response.ok) {
+        if (response.status === 401 && isGuestMode) {
+          throw new Error('Visa entry intelligence is temporarily unavailable or awaiting authorization.')
+        }
+        if (response.status === 429) {
+          throw new Error('Rate limit reached for visa queries. Please wait a moment and retry.')
+        }
         const errBody = await response.json().catch(() => ({}))
         throw new Error(errBody.error || `Failed to refresh visa requirements (HTTP ${response.status})`)
       }
@@ -216,20 +313,44 @@ export default function VisaRequirementsCard({ trip }) {
           </div>
         </div>
 
-        {/* Refresh Action */}
-        {!loading && !isMissingPassport && (
-          <div className="flex items-center gap-2 sm:self-center">
+        {/* Header Controls: Passport Selector & Refresh */}
+        <div className="flex flex-wrap items-center gap-2.5 sm:self-center">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-[color:rgba(32,37,34,0.7)]">
+            <span className="shrink-0">Passport:</span>
+            <select
+              value={passportNationality}
+              onChange={(e) => {
+                const val = e.target.value
+                setPassportNationality(val)
+                inFlightTripIdRef.current = null
+              }}
+              className="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-ivory)] px-2 text-xs font-semibold text-[var(--color-navy)] outline-none transition-colors hover:border-[var(--color-border-strong)] focus:border-[var(--color-terracotta)]"
+            >
+              <option value="">Select nationality...</option>
+              {POPULAR_NATIONALITIES.map((nat) => (
+                <option key={nat.code} value={nat.name.split(' ')[0]}>
+                  {nat.name}
+                </option>
+              ))}
+              {passportNationality &&
+                !POPULAR_NATIONALITIES.some((n) =>
+                  n.name.toLowerCase().startsWith(passportNationality.toLowerCase())
+                ) && <option value={passportNationality}>{passportNationality}</option>}
+            </select>
+          </label>
+
+          {!loading && !isMissingPassport && (
             <button
               type="button"
               onClick={handleRefreshVisa}
               disabled={refreshing}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-ivory)] px-3.5 py-2 text-xs font-semibold text-[var(--color-navy)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-white)] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-ivory)] px-3 py-1.5 text-xs font-semibold text-[var(--color-navy)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-white)] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              <span>{refreshing ? 'Checking Orizn...' : 'Refresh Visa Information'}</span>
+              <span>{refreshing ? 'Checking...' : 'Refresh'}</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Soft Refresh Error Notice */}
@@ -260,18 +381,38 @@ export default function VisaRequirementsCard({ trip }) {
             <UserCheck className="h-6 w-6" />
           </div>
           <h3 className="mt-3.5 font-display text-lg text-[var(--color-navy)]">
-            Passport Country Required
+            Passport Nationality Required
           </h3>
           <p className="mx-auto mt-1.5 max-w-md text-xs leading-relaxed text-[color:rgba(32,37,34,0.7)]">
-            Entry rules depend strictly on your citizenship. Please set your passport nationality in your profile to view exact visa requirements for {destinationCity}.
+            Entry rules depend strictly on your citizenship. Select your passport nationality below to view exact visa requirements for {destinationCity}.
           </p>
-          <Link
-            to="/profile"
-            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-terracotta)] bg-[var(--color-terracotta)] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[color:rgba(201,107,75,0.9)]"
-          >
-            <span>Set Passport Country</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <select
+              value={passportNationality}
+              onChange={(e) => {
+                const val = e.target.value
+                setPassportNationality(val)
+                inFlightTripIdRef.current = null
+              }}
+              className="h-10 rounded-lg border border-[var(--color-terracotta)] bg-[var(--color-white)] px-3 text-xs font-semibold text-[var(--color-navy)] shadow-sm outline-none focus:ring-1 focus:ring-[var(--color-terracotta)]"
+            >
+              <option value="">Select your passport country...</option>
+              {POPULAR_NATIONALITIES.map((n) => (
+                <option key={n.code} value={n.name.split(' ')[0]}>
+                  {n.name}
+                </option>
+              ))}
+            </select>
+            {!isGuestMode && (
+              <Link
+                to="/profile"
+                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3 text-xs font-semibold text-[var(--color-navy)] hover:border-[var(--color-border-strong)]"
+              >
+                <span>Save to Profile</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </div>
         </div>
       )}
 

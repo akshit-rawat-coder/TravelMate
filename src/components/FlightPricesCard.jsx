@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   AlertCircle,
   ArrowRight,
@@ -125,17 +126,22 @@ function getFlightBookingUrl(flight, trip, travelersCount, cabinClass, currencyC
   return `https://www.google.com/travel/flights?${searchParams.toString()}`
 }
 
-function FlightPricesCard({ trip }) {
+function FlightPricesCard({ trip, isGuest = false }) {
   const { session } = useAuth()
+  const isGuestMode = Boolean(isGuest || trip?.isGuest)
   const tripId = trip?.id
   const accessToken = session?.access_token
   const origin = trip?.origin?.trim()
   const destination = trip?.destination?.trim()
 
   const [flightData, setFlightData] = useState(null)
-  const [loading, setLoading] = useState(Boolean(tripId && accessToken && origin))
+  const [loading, setLoading] = useState(Boolean(!isGuestMode && tripId && accessToken && origin))
   const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState(
+    isGuestMode
+      ? 'Live flight scraping is reserved for registered traveler accounts to protect booking provider quotas.'
+      : null
+  )
   const [refreshError, setRefreshError] = useState(null)
   const inFlightTripIdRef = useRef(null)
   const isMountedRef = useRef(true)
@@ -149,14 +155,19 @@ function FlightPricesCard({ trip }) {
 
   // Initial fetch on mount (cache-first: refresh = false)
   useEffect(() => {
-    if (!tripId || !accessToken || !origin) {
+    if (!origin || isGuestMode) {
       return
     }
 
-    if (inFlightTripIdRef.current === tripId) {
+    if (!accessToken && !tripId) {
       return
     }
-    inFlightTripIdRef.current = tripId
+
+    const currentKey = `${tripId || origin}`
+    if (inFlightTripIdRef.current === currentKey) {
+      return
+    }
+    inFlightTripIdRef.current = currentKey
 
     async function loadFlightPrices() {
       try {
@@ -166,24 +177,59 @@ function FlightPricesCard({ trip }) {
 
         const supabaseUrl =
           import.meta.env.VITE_SUPABASE_URL || 'https://zmwfnttudlpyweolndtd.supabase.co'
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
         const endpointUrl = `${supabaseUrl}/functions/v1/travel-intelligence`
+
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : anonKey
+            ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+            : {}),
+        }
+
+        const bodyPayload = isGuestMode
+          ? {
+              isGuest: true,
+              guest: true,
+              service: 'flight',
+              trip: {
+                id: tripId || 'guest-demo',
+                origin,
+                destination,
+                start_date: trip?.start_date,
+                travelers: trip?.travelers,
+                cabin_class: trip?.cabin_class,
+                currency: trip?.currency,
+              },
+              refresh: false,
+            }
+          : {
+              tripId,
+              service: 'flight',
+              refresh: false,
+            }
 
         const response = await fetch(endpointUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            tripId,
-            service: 'flight',
-            refresh: false,
-          }),
+          headers,
+          body: JSON.stringify(bodyPayload),
         })
 
         if (!response.ok) {
+          if (response.status === 401 && isGuestMode) {
+            throw new Error(
+              'Live flight booking discovery requires a verified traveler account to prevent quota exhaustion. Sign in or create an account to view real-time flight pricing.'
+            )
+          }
           const errBody = await response.json().catch(() => ({}))
-          throw new Error(errBody.error || `Unable to load flight prices (HTTP ${response.status})`)
+          throw new Error(
+            errBody.error ||
+              (isGuestMode
+                ? 'Flight options are temporarily unavailable in guest preview.'
+                : `Unable to load flight prices (HTTP ${response.status})`)
+          )
         }
 
         const data = await response.json()
@@ -196,7 +242,12 @@ function FlightPricesCard({ trip }) {
         }
       } catch (err) {
         if (isMountedRef.current) {
-          setError(err.message || 'Unable to retrieve flight options at this time.')
+          setError(
+            err.message ||
+              (isGuestMode
+                ? 'Flight prices are unavailable in guest demo. Sign in to view live flight options.'
+                : 'Unable to retrieve flight options at this time.')
+          )
         }
       } finally {
         inFlightTripIdRef.current = null
@@ -207,11 +258,12 @@ function FlightPricesCard({ trip }) {
     }
 
     loadFlightPrices()
-  }, [tripId, accessToken, origin])
+  }, [tripId, accessToken, origin, destination, trip?.start_date, trip?.travelers, trip?.cabin_class, trip?.currency, isGuestMode])
 
   // Explicit user-triggered refresh
   async function handleRefreshPrices() {
-    if (refreshing || !tripId || !accessToken) return
+    if (refreshing || !origin) return
+    if (!isGuestMode && (!tripId || !accessToken)) return
 
     try {
       setRefreshing(true)
@@ -219,19 +271,44 @@ function FlightPricesCard({ trip }) {
 
       const supabaseUrl =
         import.meta.env.VITE_SUPABASE_URL || 'https://zmwfnttudlpyweolndtd.supabase.co'
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const endpointUrl = `${supabaseUrl}/functions/v1/travel-intelligence`
+
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : anonKey
+          ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+          : {}),
+      }
+
+      const bodyPayload = isGuestMode
+        ? {
+            isGuest: true,
+            guest: true,
+            service: 'flight',
+            trip: {
+              id: trip?.id || 'guest-demo',
+              origin,
+              destination,
+              start_date: trip?.start_date,
+              travelers: trip?.travelers,
+              cabin_class: trip?.cabin_class,
+              currency: trip?.currency,
+            },
+            refresh: true,
+          }
+        : {
+            tripId,
+            service: 'flight',
+            refresh: true,
+          }
 
       const response = await fetch(endpointUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          tripId,
-          service: 'flight',
-          refresh: true,
-        }),
+        headers,
+        body: JSON.stringify(bodyPayload),
       })
 
       if (!response.ok) {
@@ -309,7 +386,49 @@ function FlightPricesCard({ trip }) {
     )
   }
 
-  // 3. Initial Error state (no flights data loaded at all)
+  // 3. Guest Mode Notice State
+  if (isGuestMode) {
+    return (
+      <div className="mt-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-white)] p-6 shadow-[0_8px_30px_rgba(23,50,77,0.05)] sm:p-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3.5">
+            <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-sand-light)] p-2.5 text-[var(--color-terracotta)]">
+              <Plane className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-display text-lg text-[var(--color-navy)] sm:text-xl">
+                  Flight Booking Intelligence
+                </h3>
+                <span className="rounded-full border border-[color:rgba(201,107,75,0.3)] bg-[color:rgba(201,107,75,0.08)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--color-terracotta)]">
+                  Account Required
+                </span>
+              </div>
+              <p className="mt-1 max-w-xl text-xs text-[color:rgba(32,37,34,0.7)] sm:text-sm">
+                Live flight scraping and real-time inventory discovery are reserved for verified traveler accounts to prevent upstream booking provider quota exhaustion. Sign in or create a free account to view real-time airline fares for {origin || 'origin'} → {destination || 'destination'}.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:self-center">
+            <Link
+              to="/signup"
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-[var(--color-terracotta)] px-4 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+            >
+              Create Free Account
+            </Link>
+            <Link
+              to="/login"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-4 text-xs font-semibold text-[var(--color-navy)] transition-colors hover:border-[var(--color-border-strong)]"
+            >
+              Sign In
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 4. Initial Error state (no flights data loaded at all)
   if (error && !flightData) {
     return (
       <div className="mt-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-white)] p-6 shadow-[0_8px_30px_rgba(23,50,77,0.05)] sm:p-8">

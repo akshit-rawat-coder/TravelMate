@@ -5,24 +5,56 @@ import { useAuth } from '../context/useAuth'
 import supabase from '../lib/supabase'
 
 import { getLocalDateString, validateTripDates } from '../utils/date'
+import { inferPassportNationality, POPULAR_NATIONALITIES, resolveOriginCountry } from '../utils/geo'
 
-function TripPlanningForm() {
+function TripPlanningForm({ mode = 'authenticated', initialValues = null, onGuestSubmit = null }) {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
 
-  const [origin, setOrigin] = useState('')
-  const [destination, setDestination] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [travelers, setTravelers] = useState('1')
-  const [cabinClass, setCabinClass] = useState('economy')
-  const [budget, setBudget] = useState('')
-  const [currency, setCurrency] = useState(profile?.currency || 'USD')
+  const initialOrigin = initialValues?.origin || ''
+  const [origin, setOrigin] = useState(initialOrigin)
+  const [destination, setDestination] = useState(initialValues?.destination || '')
+  const [passportCountry, setPassportCountry] = useState(
+    initialValues?.passport_country ||
+      initialValues?.passportCountry ||
+      profile?.passport_country ||
+      (resolveOriginCountry(initialOrigin) === 'India' ? 'India' : '')
+  )
+  const [userEditedPassport, setUserEditedPassport] = useState(
+    Boolean(initialValues?.passport_country || initialValues?.passportCountry)
+  )
+
+  const [startDate, setStartDate] = useState(initialValues?.startDate || initialValues?.start_date || '')
+  const [endDate, setEndDate] = useState(initialValues?.endDate || initialValues?.end_date || '')
+  const [travelers, setTravelers] = useState(String(initialValues?.travelers || '1'))
+  const [cabinClass, setCabinClass] = useState(initialValues?.cabinClass || initialValues?.cabin_class || 'economy')
+  const [budget, setBudget] = useState(initialValues?.budget != null ? String(initialValues?.budget) : '')
+  const [currency, setCurrency] = useState(initialValues?.currency || profile?.currency || 'USD')
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState(null)
 
   const today = getLocalDateString()
+
+  const handleOriginChange = (e) => {
+    const val = e.target.value
+    setOrigin(val)
+    setErrorMessage(null)
+
+    // Automatically default nationality to India for recognized Indian origins unless explicitly edited
+    if (!userEditedPassport) {
+      const inferred = inferPassportNationality(val, '')
+      if (inferred) {
+        setPassportCountry(inferred)
+      }
+    }
+  }
+
+  const handlePassportChange = (e) => {
+    setPassportCountry(e.target.value)
+    setUserEditedPassport(true)
+    setErrorMessage(null)
+  }
 
   const handleStartDateChange = (e) => {
     const newStartDate = e.target.value
@@ -43,8 +75,8 @@ function TripPlanningForm() {
     e.preventDefault()
     setErrorMessage(null)
 
-    // 1. Authenticated session check
-    if (!user) {
+    // 1. Session check for authenticated mode
+    if (mode !== 'guest' && !user) {
       navigate('/login', { state: { from: { pathname: '/' } } })
       return
     }
@@ -87,8 +119,66 @@ function TripPlanningForm() {
     // Extract country if user typed "City, Country"
     const destParts = trimmedDestination.split(',')
     const country = destParts.length > 1 ? destParts[destParts.length - 1].trim() : null
+    const originCountry = resolveOriginCountry(trimmedOrigin)
+    const effectivePassport =
+      passportCountry.trim() || (originCountry === 'India' ? 'India' : null)
 
     const effectiveCurrency = currency || profile?.currency || 'USD'
+
+    // Guest Flow: Store in sessionStorage without inserting to Supabase
+    if (mode === 'guest') {
+      // Enforce 1 complete guest trip limit per session
+      const existingGuestTrip = typeof window !== 'undefined' ? sessionStorage.getItem('travelmate_guest_trip') : null
+      if (existingGuestTrip) {
+        setErrorMessage(
+          'You have already planned your 1 free demo trip. Sign in or create an account to plan unlimited journeys.'
+        )
+        return
+      }
+
+      try {
+        setIsSubmitting(true)
+        const guestTrip = {
+          id: `guest-${Date.now()}`,
+          isGuest: true,
+          title: `${trimmedOrigin} to ${trimmedDestination}`,
+          origin: trimmedOrigin,
+          origin_country: originCountry,
+          destination: trimmedDestination,
+          country: country || null,
+          passport_country: effectivePassport,
+          passportCountry: effectivePassport,
+          start_date: startDate,
+          end_date: endDate,
+          travelers: numTravelers,
+          cabin_class: cabinClass || 'economy',
+          budget: parsedBudget,
+          currency: effectiveCurrency,
+          status: 'planned',
+          session_id: `guest-session-${Date.now()}`,
+          created_at: new Date().toISOString(),
+        }
+
+        try {
+          sessionStorage.setItem('travelmate_guest_trip', JSON.stringify(guestTrip))
+          sessionStorage.setItem('travelmate_guest_trip_completed', 'true')
+        } catch (storageErr) {
+          console.warn('Unable to persist guest trip to sessionStorage:', storageErr)
+        }
+
+        if (typeof onGuestSubmit === 'function') {
+          onGuestSubmit(guestTrip)
+        }
+
+        navigate('/guest/trip', { state: { trip: guestTrip } })
+      } catch (err) {
+        console.error('Error initiating guest trip:', err)
+        setErrorMessage('Unable to prepare your guest demo trip. Please try again.')
+      } finally {
+        setIsSubmitting(false)
+      }
+      return
+    }
 
     try {
       setIsSubmitting(true)
@@ -146,7 +236,7 @@ function TripPlanningForm() {
             type="text"
             required
             value={origin}
-            onChange={(e) => setOrigin(e.target.value)}
+            onChange={handleOriginChange}
             placeholder="Delhi"
             className="h-12 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3 text-sm text-[var(--color-charcoal)] outline-none transition-colors placeholder:text-[color:rgba(32,37,34,0.55)] focus:border-[var(--color-terracotta)]"
           />
@@ -167,6 +257,31 @@ function TripPlanningForm() {
             placeholder="Where do you want to go?"
             className="h-12 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3 text-sm text-[var(--color-charcoal)] outline-none transition-colors placeholder:text-[color:rgba(32,37,34,0.55)] focus:border-[var(--color-terracotta)]"
           />
+        </label>
+
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[var(--color-navy)] md:col-span-1 lg:col-span-3">
+          <div className="flex items-center justify-between">
+            <span>Passport Nationality</span>
+            <span className="text-[11px] font-normal text-[color:rgba(32,37,34,0.55)]">
+              Citizenship
+            </span>
+          </div>
+          <select
+            value={passportCountry}
+            onChange={handlePassportChange}
+            className="h-12 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-3 text-sm text-[var(--color-charcoal)] outline-none transition-colors focus:border-[var(--color-terracotta)]"
+          >
+            <option value="">Select nationality...</option>
+            {POPULAR_NATIONALITIES.map((nat) => (
+              <option key={nat.code} value={nat.name.split(' ')[0]}>
+                {nat.name}
+              </option>
+            ))}
+            {passportCountry &&
+              !POPULAR_NATIONALITIES.some((n) =>
+                n.name.toLowerCase().startsWith(passportCountry.toLowerCase())
+              ) && <option value={passportCountry}>{passportCountry}</option>}
+          </select>
         </label>
 
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[var(--color-navy)] md:col-span-1 lg:col-span-3">
@@ -226,7 +341,7 @@ function TripPlanningForm() {
           </select>
         </label>
 
-        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[var(--color-navy)] md:col-span-2 lg:col-span-6">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[var(--color-navy)] md:col-span-2 lg:col-span-3">
           <span>Budget (Optional)</span>
           <div className="flex gap-1.5">
             <select
@@ -271,11 +386,11 @@ function TripPlanningForm() {
             {isSubmitting ? (
               <>
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--color-white)] border-t-transparent" />
-                <span>PLANNING TRIP...</span>
+                <span>{mode === 'guest' ? 'GENERATING PREVIEW...' : 'PLANNING TRIP...'}</span>
               </>
             ) : (
               <>
-                <span>PLAN MY TRIP</span>
+                <span>{mode === 'guest' ? 'EXPLORE AS GUEST' : 'PLAN MY TRIP'}</span>
                 <ArrowRight className="h-4 w-4" />
               </>
             )}

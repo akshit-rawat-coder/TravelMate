@@ -20,15 +20,16 @@ function formatMoney(amount, currencyCode) {
   }
 }
 
-function CurrencyConversionCard({ trip }) {
+function CurrencyConversionCard({ trip, isGuest = false }) {
   const { session } = useAuth()
   const [currencyData, setCurrencyData] = useState(null)
   const [destinationInfo, setDestinationInfo] = useState(null)
   const [sources, setSources] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(Boolean(trip?.destination))
   const [error, setError] = useState(null)
   const [retryIndex, setRetryIndex] = useState(0)
 
+  const isGuestMode = Boolean(isGuest || trip?.isGuest)
   const tripId = trip?.id
   const accessToken = session?.access_token
   const inFlightTripIdRef = useRef(null)
@@ -42,14 +43,19 @@ function CurrencyConversionCard({ trip }) {
   }, [])
 
   useEffect(() => {
-    if (!tripId || !accessToken) {
+    if (!trip?.destination) {
       return
     }
 
-    if (inFlightTripIdRef.current === tripId) {
+    if (!isGuestMode && (!tripId || !accessToken)) {
       return
     }
-    inFlightTripIdRef.current = tripId
+
+    const currentKey = `${tripId || trip?.destination}-${retryIndex}`
+    if (inFlightTripIdRef.current === currentKey) {
+      return
+    }
+    inFlightTripIdRef.current = currentKey
 
     async function fetchCurrencyIntelligence() {
       try {
@@ -58,26 +64,60 @@ function CurrencyConversionCard({ trip }) {
 
         const supabaseUrl =
           import.meta.env.VITE_SUPABASE_URL || 'https://zmwfnttudlpyweolndtd.supabase.co'
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
         const endpointUrl = `${supabaseUrl}/functions/v1/travel-intelligence`
+
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : anonKey
+            ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+            : {}),
+        }
+
+        const bodyPayload = isGuestMode
+          ? {
+              isGuest: true,
+              guest: true,
+              service: 'currency',
+              trip: {
+                id: tripId || 'guest-demo',
+                destination: trip?.destination,
+                country: trip?.country,
+                currency: trip?.currency,
+                budget: trip?.budget,
+              },
+            }
+          : { tripId }
 
         const response = await fetch(endpointUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ tripId }),
+          headers,
+          body: JSON.stringify(bodyPayload),
         })
 
         if (!isMountedRef.current) return
 
         if (response.status === 401) {
-          setError('Your session has expired. Please sign in again.')
+          if (isGuestMode) {
+            setError(
+              'Currency exchange rates are temporarily unavailable or awaiting backend authorization. You can retry shortly.'
+            )
+          } else {
+            setError('Your session has expired. Please sign in again.')
+          }
+          return
+        }
+
+        if (response.status === 429) {
+          setError('Rate limit reached for currency exchange rates. Please wait a moment and retry.')
           return
         }
 
         if (!response.ok) {
-          setError('Currency conversion is temporarily unavailable.')
+          const errBody = await response.json().catch(() => ({}))
+          setError(errBody.error || 'Currency conversion is temporarily unavailable. Please retry shortly.')
           return
         }
 
@@ -95,7 +135,11 @@ function CurrencyConversionCard({ trip }) {
         }
       } catch {
         if (isMountedRef.current) {
-          setError('Currency conversion is temporarily unavailable.')
+          setError(
+            isGuestMode
+              ? 'Currency conversion is temporarily unavailable in guest preview.'
+              : 'Currency conversion is temporarily unavailable.'
+          )
         }
       } finally {
         inFlightTripIdRef.current = null
@@ -106,7 +150,7 @@ function CurrencyConversionCard({ trip }) {
     }
 
     fetchCurrencyIntelligence()
-  }, [tripId, accessToken, retryIndex])
+  }, [tripId, trip?.destination, trip?.country, trip?.currency, trip?.budget, accessToken, retryIndex, isGuestMode])
 
   const handleRetry = () => {
     inFlightTripIdRef.current = null
