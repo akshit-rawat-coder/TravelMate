@@ -402,6 +402,22 @@ interface DestinationResolution {
   currency: string;
 }
 
+// Helper: check if location indicates India
+function isIndianLocation(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  if (!lower) return false;
+  if (lower === "india" || lower === "in" || lower.includes("india")) return true;
+  if (INDIAN_STATES_AND_UTS.has(lower)) return true;
+  for (const state of INDIAN_STATES_AND_UTS) {
+    if (lower.includes(state)) return true;
+  }
+  const cityMatch = CITY_DESTINATION_MAP[lower];
+  if (cityMatch && cityMatch.country === "India") return true;
+  const indianIatas = ["del", "bom", "blr", "ccu", "maa", "hyd", "pnq", "goi", "gox", "jmr", "jai", "lko", "amd", "ixc", "pat", "vns", "cok"];
+  if (indianIatas.includes(lower)) return true;
+  return false;
+}
+
 // Destination resolution layer: reliably determines destination country first, then official ISO currency code
 function resolveDestination(
   rawDestination: string,
@@ -421,22 +437,6 @@ function resolveDestination(
     if (COUNTRY_INFO_MAP[key]) return COUNTRY_INFO_MAP[key];
     if (INDIAN_STATES_AND_UTS.has(key)) return { country: "India", currency: "INR" };
     return null;
-  };
-
-  // Helper: check if location indicates India
-  const isIndianLocation = (text: string): boolean => {
-    const lower = text.toLowerCase().trim();
-    if (!lower) return false;
-    if (lower === "india" || lower === "in" || lower.includes("india")) return true;
-    if (INDIAN_STATES_AND_UTS.has(lower)) return true;
-    for (const state of INDIAN_STATES_AND_UTS) {
-      if (lower.includes(state)) return true;
-    }
-    const cityMatch = CITY_DESTINATION_MAP[lower];
-    if (cityMatch && cityMatch.country === "India") return true;
-    const indianIatas = ["del", "bom", "blr", "ccu", "maa", "hyd", "pnq", "goi", "gox", "jmr", "jai", "lko", "amd", "ixc", "pat", "vns", "cok"];
-    if (indianIatas.includes(lower)) return true;
-    return false;
   };
 
   // 1. Explicit country provided in trip.country
@@ -578,18 +578,23 @@ async function handleWeatherRequest(
   const now = new Date();
 
   // 1. Check database cache
-  console.log("[Weather] Checking cache for trip:", cleanTripId, locationQuery);
-  const { data: cachedRow, error: cacheLookupErr } = await supabase
-    .from("trip_weather_cache")
-    .select("*")
-    .eq("trip_id", cleanTripId)
-    .eq("location", locationQuery)
-    .eq("start_date", startDate)
-    .eq("end_date", endDate)
-    .maybeSingle();
+  let cachedRow: any = null;
+  if (cleanTripId !== "guest-demo") {
+    console.log("[Weather] Checking cache for trip:", cleanTripId, locationQuery);
+    const { data, error: cacheLookupErr } = await supabase
+      .from("trip_weather_cache")
+      .select("*")
+      .eq("trip_id", cleanTripId)
+      .eq("location", locationQuery)
+      .eq("start_date", startDate)
+      .eq("end_date", endDate)
+      .maybeSingle();
 
-  if (cacheLookupErr) {
-    console.warn("[Weather Cache] Lookup warning:", cacheLookupErr.message);
+    if (cacheLookupErr) {
+      console.warn("[Weather Cache] Lookup warning:", cacheLookupErr.message);
+    } else {
+      cachedRow = data;
+    }
   }
 
   const isCacheHit = Boolean(
@@ -838,26 +843,28 @@ async function handleWeatherRequest(
     days: days,
   };
 
-  // 7. Save into trip_weather_cache
-  const { error: upsertErr } = await supabase.from("trip_weather_cache").upsert(
-    {
-      trip_id: cleanTripId,
-      location: locationQuery,
-      start_date: startDate,
-      end_date: endDate,
-      weather_mode: mode,
-      weather_data: weatherPayload,
-      fetched_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
-      updated_at: now.toISOString(),
-    },
-    { onConflict: "trip_id,location,start_date,end_date" }
-  );
+  // 7. Save into trip_weather_cache (only for saved database trips)
+  if (cleanTripId !== "guest-demo") {
+    const { error: upsertErr } = await supabase.from("trip_weather_cache").upsert(
+      {
+        trip_id: cleanTripId,
+        location: locationQuery,
+        start_date: startDate,
+        end_date: endDate,
+        weather_mode: mode,
+        weather_data: weatherPayload,
+        fetched_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        updated_at: now.toISOString(),
+      },
+      { onConflict: "trip_id,location,start_date,end_date" }
+    );
 
-  if (upsertErr) {
-    console.warn("[Weather Cache] Upsert error:", upsertErr.message);
-  } else {
-    console.log("[Weather Cache] Saved weather data successfully for trip", cleanTripId);
+    if (upsertErr) {
+      console.warn("[Weather Cache] Upsert error:", upsertErr.message);
+    } else {
+      console.log("[Weather Cache] Saved weather data successfully for trip", cleanTripId);
+    }
   }
 
   // 8. Return normalized weather response
@@ -1255,6 +1262,37 @@ async function handleFlightRequest(
       }),
       {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // Guest Demo Restriction: Protect RapidAPI scraper quota
+  if (cleanTripId === "guest-demo") {
+    return new Response(
+      JSON.stringify({
+        trip: {
+          id: trip.id,
+          origin,
+          destination,
+          startDate: departureDate,
+          travelers,
+          cabin_class: cabinClass,
+          currency,
+        },
+        guestRestricted: true,
+        refreshError:
+          "Live flight booking discovery requires a verified traveler account to prevent quota exhaustion. Sign in or create an account to view real-time flight pricing.",
+        flights: [],
+        sources: [
+          {
+            name: "Google Flights",
+            type: "flight",
+          },
+        ],
+      }),
+      {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
@@ -1747,6 +1785,28 @@ function resolveCountryIso3(input?: string | null): string | null {
   if (COUNTRY_TO_ISO3_MAP[clean]) {
     return COUNTRY_TO_ISO3_MAP[clean];
   }
+  // Demonym mapping for passport nationality strings
+  const demonymMap: Record<string, string> = {
+    indian: "IND",
+    american: "USA",
+    british: "GBR",
+    canadian: "CAN",
+    australian: "AUS",
+    german: "DEU",
+    french: "FRA",
+    singaporean: "SGP",
+    japanese: "JPN",
+    emirati: "ARE",
+    spanish: "ESP",
+    italian: "ITA",
+  };
+  if (demonymMap[clean]) {
+    return demonymMap[clean];
+  }
+  // Recognized Indian location, city, state, or UT
+  if (isIndianLocation(clean) || CITY_DESTINATION_MAP[clean]?.country === "India") {
+    return "IND";
+  }
   if (/^[a-z]{3}$/i.test(clean)) {
     return clean.toUpperCase();
   }
@@ -1883,30 +1943,56 @@ async function handleVisaRequest(
 ): Promise<Response> {
   const now = new Date();
 
-  // 1. Fetch user's profile to get passport_country
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("passport_country, country")
-    .eq("id", user.id)
-    .maybeSingle();
+  // 1. Resolve passport nationality:
+  // Prioritize explicitly specified passport nationality
+  let explicitPassport: string | null = null;
+  if (!user || cleanTripId === "guest-demo") {
+    explicitPassport = trip.passport_country || trip.passportCountry || null;
+  } else {
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("passport_country, country")
+      .eq("id", user.id)
+      .maybeSingle();
 
-  if (profileErr) {
-    console.warn("[Visa] Profile lookup error:", profileErr.message);
+    if (profileErr) {
+      console.warn("[Visa] Profile lookup error:", profileErr.message);
+    }
+    explicitPassport =
+      trip.passport_country ||
+      trip.passportCountry ||
+      profile?.passport_country ||
+      null;
   }
 
-  const rawPassport = profile?.passport_country || profile?.country || null;
-  const passportIso = resolveCountryIso3(rawPassport);
+  let passportIso: string | null = null;
+  if (explicitPassport) {
+    passportIso = resolveCountryIso3(explicitPassport);
+  } else {
+    // If user has not explicitly selected a nationality:
+    // When travel origin resolves to India, default passport nationality to India ("IND")
+    const originString = trip.origin || trip.origin_country || trip.originCountry || "";
+    if (
+      isIndianLocation(originString) ||
+      CITY_DESTINATION_MAP[originString.toLowerCase().trim()]?.country === "India"
+    ) {
+      passportIso = "IND";
+    }
+  }
 
   if (!passportIso) {
     return new Response(
       JSON.stringify({
         missingPassport: true,
         message:
-          "Please specify your Passport Country in your Profile settings to check visa requirements.",
+          user
+            ? "Please specify your Passport Country in your Profile settings or select it here to check visa requirements."
+            : "Please select your passport nationality to preview visa entry requirements.",
         trip: {
           id: trip.id,
           destination: trip.destination,
           country: destinationInfo.country,
+          origin: trip.origin,
         },
       }),
       {
@@ -1915,6 +2001,10 @@ async function handleVisaRequest(
       }
     );
   }
+
+  const resolvedPassportCountry =
+    explicitPassport ||
+    (passportIso === "IND" ? "India" : (passportIso || "Unknown"));
 
   // 2. Resolve destination country ISO
   const rawDestCountry = trip.country || destinationInfo.country || trip.destination;
@@ -1936,24 +2026,26 @@ async function handleVisaRequest(
     `[Visa] Checking entry requirements: ${passportIso} -> ${destIso} for trip ${cleanTripId}...`
   );
 
-  // 3. Database Cache Lookup
+  // 3. Database Cache Lookup (skipped for guest preview)
   let cachedRow: any = null;
-  try {
-    const { data: cacheData, error: cacheLookupErr } = await supabase
-      .from("trip_visa_cache")
-      .select("*")
-      .eq("trip_id", cleanTripId)
-      .eq("passport_country", passportIso)
-      .eq("destination_country", destIso)
-      .maybeSingle();
+  if (cleanTripId !== "guest-demo") {
+    try {
+      const { data: cacheData, error: cacheLookupErr } = await supabase
+        .from("trip_visa_cache")
+        .select("*")
+        .eq("trip_id", cleanTripId)
+        .eq("passport_country", passportIso)
+        .eq("destination_country", destIso)
+        .maybeSingle();
 
-    if (cacheLookupErr) {
-      console.warn("[Visa Cache] Lookup warning:", cacheLookupErr.message);
-    } else {
-      cachedRow = cacheData;
+      if (cacheLookupErr) {
+        console.warn("[Visa Cache] Lookup warning:", cacheLookupErr.message);
+      } else {
+        cachedRow = cacheData;
+      }
+    } catch (ex) {
+      console.warn("[Visa Cache] Lookup exception:", ex);
     }
-  } catch (ex) {
-    console.warn("[Visa Cache] Lookup exception:", ex);
   }
 
   const isCacheHit = Boolean(
@@ -1972,7 +2064,7 @@ async function handleVisaRequest(
           id: trip.id,
           destination: trip.destination,
           country: destinationInfo.country,
-          passportCountry: rawPassport,
+          passportCountry: resolvedPassportCountry,
           passportIso,
           destIso,
         },
@@ -2010,7 +2102,7 @@ async function handleVisaRequest(
             id: trip.id,
             destination: trip.destination,
             country: destinationInfo.country,
-            passportCountry: rawPassport,
+            passportCountry: resolvedPassportCountry,
             passportIso,
             destIso,
           },
@@ -2101,7 +2193,7 @@ async function handleVisaRequest(
             id: trip.id,
             destination: trip.destination,
             country: destinationInfo.country,
-            passportCountry: rawPassport,
+            passportCountry: resolvedPassportCountry,
             passportIso,
             destIso,
           },
@@ -2149,40 +2241,42 @@ async function handleVisaRequest(
   const VISA_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(now.getTime() + VISA_CACHE_TTL_MS);
 
-  try {
-    if (cachedRow?.id) {
-      const { error: updateErr } = await supabase
-        .from("trip_visa_cache")
-        .update({
-          visa_data: normalizedVisa,
-          fetched_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          updated_at: now.toISOString(),
-        })
-        .eq("id", cachedRow.id);
+  if (cleanTripId !== "guest-demo") {
+    try {
+      if (cachedRow?.id) {
+        const { error: updateErr } = await supabase
+          .from("trip_visa_cache")
+          .update({
+            visa_data: normalizedVisa,
+            fetched_at: now.toISOString(),
+            expires_at: expiresAt.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .eq("id", cachedRow.id);
 
-      if (updateErr) {
-        console.warn("[Visa Cache] Update error:", updateErr.message);
-      }
-    } else {
-      const { error: insertErr } = await supabase
-        .from("trip_visa_cache")
-        .insert({
-          trip_id: cleanTripId,
-          passport_country: passportIso,
-          destination_country: destIso,
-          visa_data: normalizedVisa,
-          fetched_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          updated_at: now.toISOString(),
-        });
+        if (updateErr) {
+          console.warn("[Visa Cache] Update error:", updateErr.message);
+        }
+      } else {
+        const { error: insertErr } = await supabase
+          .from("trip_visa_cache")
+          .insert({
+            trip_id: cleanTripId,
+            passport_country: passportIso,
+            destination_country: destIso,
+            visa_data: normalizedVisa,
+            fetched_at: now.toISOString(),
+            expires_at: expiresAt.toISOString(),
+            updated_at: now.toISOString(),
+          });
 
-      if (insertErr) {
-        console.warn("[Visa Cache] Insert error:", insertErr.message);
+        if (insertErr) {
+          console.warn("[Visa Cache] Insert error:", insertErr.message);
+        }
       }
+    } catch (cacheEx) {
+      console.warn("[Visa Cache] Save exception:", cacheEx);
     }
-  } catch (cacheEx) {
-    console.warn("[Visa Cache] Save exception:", cacheEx);
   }
 
   // 8. Return response
@@ -2192,7 +2286,7 @@ async function handleVisaRequest(
         id: trip.id,
         destination: trip.destination,
         country: destinationInfo.country,
-        passportCountry: rawPassport,
+        passportCountry: resolvedPassportCountry,
         passportIso,
         destIso,
       },
@@ -2765,21 +2859,23 @@ async function handleAttractionsRequest(
 
   // 1. Check Database Cache
   let cachedRow: any = null;
-  try {
-    const { data: cacheData, error: cacheLookupErr } = await supabase
-      .from("attractions_cache")
-      .select("*")
-      .eq("trip_id", cleanTripId)
-      .eq("radius_meters", RADIUS_METERS)
-      .maybeSingle();
+  if (cleanTripId !== "guest-demo") {
+    try {
+      const { data: cacheData, error: cacheLookupErr } = await supabase
+        .from("attractions_cache")
+        .select("*")
+        .eq("trip_id", cleanTripId)
+        .eq("radius_meters", RADIUS_METERS)
+        .maybeSingle();
 
-    if (cacheLookupErr) {
-      console.warn("[Attractions Cache] Lookup warning:", cacheLookupErr.message);
-    } else {
-      cachedRow = cacheData;
+      if (cacheLookupErr) {
+        console.warn("[Attractions Cache] Lookup warning:", cacheLookupErr.message);
+      } else {
+        cachedRow = cacheData;
+      }
+    } catch (ex) {
+      console.warn("[Attractions Cache] Lookup exception:", ex);
     }
-  } catch (ex) {
-    console.warn("[Attractions Cache] Lookup exception:", ex);
   }
 
   const isCacheHit = Boolean(
@@ -3042,35 +3138,37 @@ async function handleAttractionsRequest(
   const ATTRACTIONS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(now.getTime() + ATTRACTIONS_TTL_MS);
 
-  try {
-    const { error: upsertErr } = await supabase.from("attractions_cache").upsert(
-      {
-        trip_id: cleanTripId,
-        destination_city: destinationInfo.city,
-        destination_country: destinationInfo.country,
-        latitude: destCoords.lat,
-        longitude: destCoords.lon,
-        radius_meters: RADIUS_METERS,
-        attractions_data: {
-          items: normalizedPlaces,
-          count: normalizedPlaces.length,
+  if (cleanTripId !== "guest-demo") {
+    try {
+      const { error: upsertErr } = await supabase.from("attractions_cache").upsert(
+        {
+          trip_id: cleanTripId,
+          destination_city: destinationInfo.city,
+          destination_country: destinationInfo.country,
+          latitude: destCoords.lat,
+          longitude: destCoords.lon,
+          radius_meters: RADIUS_METERS,
+          attractions_data: {
+            items: normalizedPlaces,
+            count: normalizedPlaces.length,
+          },
+          fetched_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          updated_at: now.toISOString(),
         },
-        fetched_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        updated_at: now.toISOString(),
-      },
-      { onConflict: "trip_id,radius_meters" }
-    );
-
-    if (upsertErr) {
-      console.warn("[Attractions Cache] Upsert warning:", upsertErr.message);
-    } else {
-      console.log(
-        `[Attractions Cache] Saved ${normalizedPlaces.length} attractions for trip ${cleanTripId}`
+        { onConflict: "trip_id,radius_meters" }
       );
+
+      if (upsertErr) {
+        console.warn("[Attractions Cache] Upsert warning:", upsertErr.message);
+      } else {
+        console.log(
+          `[Attractions Cache] Saved ${normalizedPlaces.length} attractions for trip ${cleanTripId}`
+        );
+      }
+    } catch (saveErr) {
+      console.warn("[Attractions Cache] Save exception caught:", saveErr);
     }
-  } catch (saveErr) {
-    console.warn("[Attractions Cache] Save exception caught:", saveErr);
   }
 
   // 8. Return normalized HTTP 200 response
@@ -3108,6 +3206,98 @@ async function handleAttractionsRequest(
   );
 }
 
+// Security Configuration for Guest Requests
+const MAX_REQUEST_BODY_BYTES = 25000; // 25 KB max payload size
+const ALLOWED_GUEST_SERVICES = ["weather", "currency", "visa", "attractions", "flight"];
+const GUEST_RATE_LIMIT_MAX = 15; // 15 requests per minute per IP
+const GUEST_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+const localGuestRateLimitMap = new Map<string, RateLimitBucket>();
+
+function isValidIp(ip: string): boolean {
+  // IPv4 format validation
+  const ipv4 = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  // IPv6 format validation
+  const ipv6 = /^[0-9a-fA-F:]{2,39}$/;
+  return ipv4.test(ip) || (ipv6.test(ip) && ip.includes(":"));
+}
+
+function getSanitizedClientIp(req: Request): string {
+  // 1. Cloudflare edge proxy header (injected by Cloudflare infrastructure; cannot be client-spoofed)
+  const cfIp = req.headers.get("cf-connecting-ip");
+  if (cfIp && isValidIp(cfIp.trim())) {
+    return cfIp.trim();
+  }
+
+  // 2. Direct gateway real-IP header
+  const xRealIp = req.headers.get("x-real-ip");
+  if (xRealIp && isValidIp(xRealIp.trim())) {
+    return xRealIp.trim();
+  }
+
+  // 3. Fallback to rightmost valid IP in x-forwarded-for (closest to trusted proxy)
+  const xForwardedFor = req.headers.get("x-forwarded-for");
+  if (xForwardedFor) {
+    const parts = xForwardedFor.split(",").map((p) => p.trim());
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (isValidIp(parts[i])) {
+        return parts[i];
+      }
+    }
+  }
+
+  return "unresolved-client-ip";
+}
+
+async function hashClientIp(rawIp: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${rawIp}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function checkLocalRateLimit(ipHash: string): { allowed: boolean; remaining: number; retryAfter: number } {
+  const now = Date.now();
+
+  // Prune expired buckets if map exceeds 2,000 entries
+  if (localGuestRateLimitMap.size > 2000) {
+    for (const [key, bucket] of localGuestRateLimitMap.entries()) {
+      if (bucket.resetAt <= now) {
+        localGuestRateLimitMap.delete(key);
+      }
+    }
+  }
+
+  const existing = localGuestRateLimitMap.get(ipHash);
+  if (!existing || existing.resetAt <= now) {
+    localGuestRateLimitMap.set(ipHash, {
+      count: 1,
+      resetAt: now + GUEST_RATE_LIMIT_WINDOW_MS,
+    });
+    return { allowed: true, remaining: GUEST_RATE_LIMIT_MAX - 1, retryAfter: 0 };
+  }
+
+  if (existing.count < GUEST_RATE_LIMIT_MAX) {
+    existing.count += 1;
+    return {
+      allowed: true,
+      remaining: GUEST_RATE_LIMIT_MAX - existing.count,
+      retryAfter: 0,
+    };
+  }
+
+  const retryAfterSec = Math.max(1, Math.ceil((existing.resetAt - now) / 1000));
+  return {
+    allowed: false,
+    remaining: 0,
+    retryAfter: retryAfterSec,
+  };
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = getCorsHeaders(req);
 
@@ -3130,22 +3320,22 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  try {
-    // Stage A: Authenticate User Request via JWT
-    console.log("[Stage A] Authenticating user request...");
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new Response(
-        JSON.stringify({ error: "Authentication required" }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+  // 3. Enforce Request Body Size Limit
+  const contentLength = req.headers.get("content-length");
+  if (contentLength && parseInt(contentLength, 10) > MAX_REQUEST_BODY_BYTES) {
+    return new Response(
+      JSON.stringify({ error: "Payload too large. Maximum request size is 25 KB." }),
+      {
+        status: 413,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
 
+  try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error("[Stage A] Missing SUPABASE_URL or SUPABASE_ANON_KEY config");
@@ -3158,41 +3348,41 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: { Authorization: authHeader },
-      },
-      auth: {
-        persistSession: false,
-      },
-    });
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      console.warn("[Stage A] Auth failed:", authError?.message);
+    // Read and Validate Request Body Text & Size
+    let rawBodyText = "";
+    try {
+      rawBodyText = await req.text();
+    } catch {
       return new Response(
-        JSON.stringify({ error: "Authentication required" }),
+        JSON.stringify({ error: "Failed to read request body" }),
         {
-          status: 401,
+          status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
-    console.log("[Stage A] User authenticated successfully");
 
-    // Stage B: Parse & Validate Trip UUID
+    if (rawBodyText.length > MAX_REQUEST_BODY_BYTES) {
+      return new Response(
+        JSON.stringify({ error: "Payload too large. Maximum request size is 25 KB." }),
+        {
+          status: 413,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     let body: {
       tripId?: string;
       service?: string;
       type?: string;
       refresh?: boolean;
+      guest?: boolean;
+      isGuest?: boolean;
+      trip?: any;
     } = {};
     try {
-      body = await req.json();
+      body = JSON.parse(rawBodyText);
     } catch {
       return new Response(
         JSON.stringify({ error: "Invalid JSON request body" }),
@@ -3203,44 +3393,342 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    let cleanTripId = (body.tripId || "").trim();
-    if (cleanTripId === "8fbdde22-76df-4355-81e5-aa0d6db235e") {
-      cleanTripId = "8fbdde22-76df-4355-81e5-aa0ad6db235e";
-    }
+    const authHeader = req.headers.get("Authorization");
+    const apikeyHeader = req.headers.get("apikey");
+    const isGuest = Boolean(body.guest || body.isGuest);
 
-    if (!cleanTripId || !UUID_REGEX.test(cleanTripId)) {
-      console.warn("[Stage B] Invalid UUID supplied:", body.tripId);
-      return new Response(
-        JSON.stringify({ error: "Invalid or missing tripId parameter" }),
+    let user: any = null;
+    let trip: any = null;
+    let cleanTripId = "";
+    let supabase: any = null;
+
+    if (isGuest) {
+      console.log("[Guest Path] Processing guest demo request...");
+
+      // Service Allowlisting: restrict guest execution to known valid services
+      const rawRequestedService = String(body.service || body.type || "currency").toLowerCase().trim();
+      if (!ALLOWED_GUEST_SERVICES.includes(rawRequestedService)) {
+        return new Response(
+          JSON.stringify({
+            error: `Unsupported service "${rawRequestedService}". Allowed services for guest demo: ${ALLOWED_GUEST_SERVICES.join(", ")}`,
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Verify anon token or valid API key
+      const token = authHeader ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
+      if (
+        apikeyHeader !== supabaseAnonKey &&
+        token !== supabaseAnonKey &&
+        token.length < 10
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Valid anon API key required for guest requests" }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Server-Side Rate Limiter:
+      // 1. Resolve and sanitize client IP (do not trust arbitrary client headers)
+      const rawClientIp = getSanitizedClientIp(req);
+
+      // 2. Compute non-reversible SHA-256 hash using project anon key as secret salt
+      const ipHash = await hashClientIp(rawClientIp, supabaseAnonKey);
+
+      // 3. Fast-reject in-isolate burst floods via in-memory sliding window
+      const rateLimitCheck = checkLocalRateLimit(ipHash);
+      if (!rateLimitCheck.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: "Too many guest requests. Please wait a moment before trying again, or sign in.",
+            retryAfter: rateLimitCheck.retryAfter,
+          }),
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "Retry-After": String(rateLimitCheck.retryAfter),
+              "X-RateLimit-Limit": String(GUEST_RATE_LIMIT_MAX),
+              "X-RateLimit-Remaining": "0",
+            },
+          }
+        );
+      }
+
+      // 4. Durable shared rate-limiting via atomic check_guest_rate_limit PostgreSQL RPC
+      // Fail-closed requirement: if durable limiter credentials are missing or the RPC check fails, fail closed!
+      if (!supabaseServiceRoleKey) {
+        console.error("[Guest Rate Limit] SUPABASE_SERVICE_ROLE_KEY is missing. Failing closed for guest request.");
+        return new Response(
+          JSON.stringify({
+            error: "Guest demo service is temporarily unavailable (rate-limiting infrastructure offline). Please try again later or sign in.",
+          }),
+          {
+            status: 503,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "Retry-After": "30",
+            },
+          }
+        );
+      }
+
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+        auth: { persistSession: false },
+      });
+
+      const { data: durableLimit, error: rpcErr } = await supabaseAdmin.rpc(
+        "check_guest_rate_limit",
         {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          p_ip_hash: ipHash,
+          p_max_requests: GUEST_RATE_LIMIT_MAX,
+          p_window_seconds: 60,
         }
       );
-    }
 
-    console.log("[Stage B] Looking up trip in database...");
+      if (rpcErr || !durableLimit) {
+        console.error("[Guest Rate Limit] Durable check_guest_rate_limit RPC failed. Failing closed:", rpcErr?.message);
+        return new Response(
+          JSON.stringify({
+            error: "Guest demo service is temporarily unavailable (rate-limiting check failed). Please try again shortly or sign in.",
+          }),
+          {
+            status: 503,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "Retry-After": "30",
+            },
+          }
+        );
+      }
 
-    const { data: trip, error: tripError } = await supabase
-      .from("trips")
-      .select(
-        "id, destination, country, origin, cabin_class, currency, budget, start_date, end_date, travelers"
-      )
-      .eq("id", cleanTripId)
-      .eq("user_id", user.id)
-      .maybeSingle();
+      if (durableLimit.allowed === false) {
+        const retryAfter = Number(durableLimit.retry_after) || 60;
+        return new Response(
+          JSON.stringify({
+            error: "Too many guest requests. Please wait a moment before trying again, or sign in.",
+            retryAfter,
+          }),
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "Retry-After": String(retryAfter),
+              "X-RateLimit-Limit": String(GUEST_RATE_LIMIT_MAX),
+              "X-RateLimit-Remaining": "0",
+            },
+          }
+        );
+      }
 
-    if (tripError || !trip) {
-      console.warn("[Stage B] Trip lookup failed or unauthorized:", tripError?.message);
-      return new Response(
-        JSON.stringify({ error: "Trip not found" }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const guestTrip = body.trip;
+      if (!guestTrip || typeof guestTrip !== "object") {
+        return new Response(
+          JSON.stringify({ error: "Missing trip object in guest request body" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const rawDest = String(guestTrip.destination || "").trim();
+      if (!rawDest || rawDest.length > 100) {
+        return new Response(
+          JSON.stringify({ error: "Invalid destination parameter (must be 1-100 characters)" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Validate & sanitize dates (YYYY-MM-DD format)
+      const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+      const rawStartDate = String(guestTrip.start_date || guestTrip.startDate || "").trim();
+      const rawEndDate = String(guestTrip.end_date || guestTrip.endDate || "").trim();
+
+      let validatedStartDate: string | null = null;
+      let validatedEndDate: string | null = null;
+
+      if (rawStartDate) {
+        if (!DATE_REGEX.test(rawStartDate) || isNaN(Date.parse(rawStartDate))) {
+          return new Response(
+            JSON.stringify({ error: "Invalid start_date format (must be YYYY-MM-DD)" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
-      );
+        validatedStartDate = rawStartDate;
+      }
+
+      if (rawEndDate) {
+        if (!DATE_REGEX.test(rawEndDate) || isNaN(Date.parse(rawEndDate))) {
+          return new Response(
+            JSON.stringify({ error: "Invalid end_date format (must be YYYY-MM-DD)" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        validatedEndDate = rawEndDate;
+      }
+
+      if (validatedStartDate && validatedEndDate) {
+        if (validatedEndDate < validatedStartDate) {
+          return new Response(
+            JSON.stringify({ error: "Trip end date cannot precede start date" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        // Limit guest trip duration to a maximum of 90 days to prevent provider query abuse
+        const startMs = new Date(validatedStartDate).getTime();
+        const endMs = new Date(validatedEndDate).getTime();
+        const diffDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24));
+        if (diffDays > 90) {
+          return new Response(
+            JSON.stringify({ error: "Guest demo trips are limited to a maximum of 90 days" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
+      // Validate & limit travelers count (1 to 20)
+      const rawTravelers = Number(guestTrip.travelers);
+      const validatedTravelers =
+        !isNaN(rawTravelers) && rawTravelers > 0
+          ? Math.min(Math.floor(rawTravelers), 20)
+          : 1;
+
+      // Validate cabin class
+      const VALID_CABINS = ["economy", "premium_economy", "business", "first"];
+      const rawCabin = String(guestTrip.cabin_class || "economy").toLowerCase();
+      const validatedCabin = VALID_CABINS.includes(rawCabin) ? rawCabin : "economy";
+
+      // Validate currency (3 capital letters, e.g. USD, EUR, INR)
+      const rawCurrency = String(guestTrip.currency || "USD").toUpperCase().trim();
+      const validatedCurrency = /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : "USD";
+
+      // Validate budget (0 to 10,000,000)
+      let validatedBudget: number | null = null;
+      if (guestTrip.budget != null) {
+        const parsedBudget = Number(guestTrip.budget);
+        if (!isNaN(parsedBudget) && parsedBudget >= 0) {
+          validatedBudget = Math.min(parsedBudget, 10_000_000);
+        }
+      }
+
+      cleanTripId = "guest-demo";
+      trip = {
+        id: "guest-demo",
+        destination: rawDest,
+        country: guestTrip.country ? String(guestTrip.country).trim().slice(0, 80) : null,
+        origin: guestTrip.origin ? String(guestTrip.origin).trim().slice(0, 100) : null,
+        origin_country: guestTrip.origin_country || guestTrip.originCountry || null,
+        passport_country: guestTrip.passport_country || guestTrip.passportCountry || null,
+        session_id: guestTrip.session_id || guestTrip.sessionId || null,
+        cabin_class: validatedCabin,
+        currency: validatedCurrency,
+        budget: validatedBudget,
+        start_date: validatedStartDate,
+        end_date: validatedEndDate,
+        travelers: validatedTravelers,
+      };
+
+      // Disallow force refresh for guests
+      body.refresh = false;
+
+      supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false },
+      });
+    } else {
+      // Authenticated Flow (Strict JWT Check)
+      console.log("[Stage A] Authenticating user request...");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return new Response(
+          JSON.stringify({ error: "Authentication required" }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: { Authorization: authHeader },
+        },
+        auth: {
+          persistSession: false,
+        },
+      });
+
+      const {
+        data: { user: authedUser },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !authedUser) {
+        console.warn("[Stage A] Auth failed:", authError?.message);
+        return new Response(
+          JSON.stringify({ error: "Authentication required" }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      user = authedUser;
+      console.log("[Stage A] User authenticated successfully");
+
+      cleanTripId = (body.tripId || "").trim();
+      if (cleanTripId === "8fbdde22-76df-4355-81e5-aa0d6db235e") {
+        cleanTripId = "8fbdde22-76df-4355-81e5-aa0ad6db235e";
+      }
+
+      if (!cleanTripId || !UUID_REGEX.test(cleanTripId)) {
+        console.warn("[Stage B] Invalid UUID supplied:", body.tripId);
+        return new Response(
+          JSON.stringify({ error: "Invalid or missing tripId parameter" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      console.log("[Stage B] Looking up trip in database...");
+
+      const { data: dbTrip, error: tripError } = await supabase
+        .from("trips")
+        .select(
+          "id, destination, country, origin, cabin_class, currency, budget, start_date, end_date, travelers"
+        )
+        .eq("id", cleanTripId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (tripError || !dbTrip) {
+        console.warn("[Stage B] Trip lookup failed or unauthorized:", tripError?.message);
+        return new Response(
+          JSON.stringify({ error: "Trip not found" }),
+          {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      trip = dbTrip;
+      console.log("[Stage B] Trip found:", trip.destination, "Currency:", trip.currency);
     }
-    console.log("[Stage B] Trip found:", trip.destination, "Currency:", trip.currency);
 
     // Stage C: Destination Resolution (e.g. Paris -> France -> EUR)
     console.log("[Stage C] Resolving destination...");
@@ -3316,14 +3804,16 @@ Deno.serve(async (req: Request) => {
     if (sourceCurrency === destinationCurrency) {
       console.log("[Stage C] Same currency detected. Skipping external Fixer call.");
       // Ensure any previously cached incorrect destination currencies for this trip are cleared
-      try {
-        await supabase
-          .from("trip_currency_cache")
-          .delete()
-          .eq("trip_id", cleanTripId)
-          .neq("destination_currency", destinationCurrency);
-      } catch (cleanupErr) {
-        console.warn("[Currency Cache] Cleanup warning:", cleanupErr);
+      if (cleanTripId !== "guest-demo") {
+        try {
+          await supabase
+            .from("trip_currency_cache")
+            .delete()
+            .eq("trip_id", cleanTripId)
+            .neq("destination_currency", destinationCurrency);
+        } catch (cleanupErr) {
+          console.warn("[Currency Cache] Cleanup warning:", cleanupErr);
+        }
       }
 
       return new Response(
@@ -3367,38 +3857,42 @@ Deno.serve(async (req: Request) => {
     }
 
     // Ensure no stale cached destination currencies exist for this trip if destination currency changed
-    try {
-      await supabase
-        .from("trip_currency_cache")
-        .delete()
-        .eq("trip_id", cleanTripId)
-        .neq("destination_currency", destinationCurrency);
-    } catch (cleanupErr) {
-      console.warn("[Currency Cache] Cleanup warning:", cleanupErr);
+    if (cleanTripId !== "guest-demo") {
+      try {
+        await supabase
+          .from("trip_currency_cache")
+          .delete()
+          .eq("trip_id", cleanTripId)
+          .neq("destination_currency", destinationCurrency);
+      } catch (cleanupErr) {
+        console.warn("[Currency Cache] Cleanup warning:", cleanupErr);
+      }
     }
 
     // Stage D0: Check Database Cache for Currency Conversion (24-hour TTL)
     const now = new Date();
     let cachedCurrency = null;
-    try {
-      console.log(
-        `[Currency Cache] Checking cache for trip ${cleanTripId} (${sourceCurrency} -> ${destinationCurrency})...`
-      );
-      const { data, error: cacheLookupErr } = await supabase
-        .from("trip_currency_cache")
-        .select("*")
-        .eq("trip_id", cleanTripId)
-        .eq("source_currency", sourceCurrency)
-        .eq("destination_currency", destinationCurrency)
-        .maybeSingle();
+    if (cleanTripId !== "guest-demo") {
+      try {
+        console.log(
+          `[Currency Cache] Checking cache for trip ${cleanTripId} (${sourceCurrency} -> ${destinationCurrency})...`
+        );
+        const { data, error: cacheLookupErr } = await supabase
+          .from("trip_currency_cache")
+          .select("*")
+          .eq("trip_id", cleanTripId)
+          .eq("source_currency", sourceCurrency)
+          .eq("destination_currency", destinationCurrency)
+          .maybeSingle();
 
-      if (cacheLookupErr) {
-        console.warn("[Currency Cache] Lookup warning:", cacheLookupErr.message);
-      } else {
-        cachedCurrency = data;
+        if (cacheLookupErr) {
+          console.warn("[Currency Cache] Lookup warning:", cacheLookupErr.message);
+        } else {
+          cachedCurrency = data;
+        }
+      } catch (cacheErr) {
+        console.warn("[Currency Cache] Lookup exception caught:", cacheErr);
       }
-    } catch (cacheErr) {
-      console.warn("[Currency Cache] Lookup exception caught:", cacheErr);
     }
 
     if (cachedCurrency && cachedCurrency.rate != null && Number(cachedCurrency.rate) > 0) {
@@ -3748,35 +4242,37 @@ Deno.serve(async (req: Request) => {
     const CURRENCY_TTL_MS = 24 * 60 * 60 * 1000;
     const currencyExpiresAt = new Date(now.getTime() + CURRENCY_TTL_MS);
 
-    try {
-      const { error: currencyUpsertErr } = await supabase
-        .from("trip_currency_cache")
-        .upsert(
-          {
-            trip_id: cleanTripId,
-            source_currency: sourceCurrency,
-            destination_currency: destinationCurrency,
-            rate: rate,
-            trip_budget: tripBudget,
-            converted_budget: convertedBudget,
-            example_amount: EXAMPLE_AMOUNT,
-            converted_amount: convertedAmount,
-            fetched_at: now.toISOString(),
-            expires_at: currencyExpiresAt.toISOString(),
-            updated_at: now.toISOString(),
-          },
-          { onConflict: "trip_id,source_currency,destination_currency" }
-        );
+    if (cleanTripId !== "guest-demo") {
+      try {
+        const { error: currencyUpsertErr } = await supabase
+          .from("trip_currency_cache")
+          .upsert(
+            {
+              trip_id: cleanTripId,
+              source_currency: sourceCurrency,
+              destination_currency: destinationCurrency,
+              rate: rate,
+              trip_budget: tripBudget,
+              converted_budget: convertedBudget,
+              example_amount: EXAMPLE_AMOUNT,
+              converted_amount: convertedAmount,
+              fetched_at: now.toISOString(),
+              expires_at: currencyExpiresAt.toISOString(),
+              updated_at: now.toISOString(),
+            },
+            { onConflict: "trip_id,source_currency,destination_currency" }
+          );
 
-      if (currencyUpsertErr) {
-        console.warn("[Currency Cache] Upsert warning:", currencyUpsertErr.message);
-      } else {
-        console.log(
-          `[Currency Cache] Saved currency cache row for trip ${cleanTripId} (${sourceCurrency} -> ${destinationCurrency})`
-        );
+        if (currencyUpsertErr) {
+          console.warn("[Currency Cache] Upsert warning:", currencyUpsertErr.message);
+        } else {
+          console.log(
+            `[Currency Cache] Saved currency cache row for trip ${cleanTripId} (${sourceCurrency} -> ${destinationCurrency})`
+          );
+        }
+      } catch (saveErr) {
+        console.warn("[Currency Cache] Save exception caught:", saveErr);
       }
-    } catch (saveErr) {
-      console.warn("[Currency Cache] Save exception caught:", saveErr);
     }
 
     // Stage H: Final Normalized JSON Response

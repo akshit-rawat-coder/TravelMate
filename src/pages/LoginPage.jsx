@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AlertCircle, ArrowRight, Lock, Mail, Plane } from 'lucide-react'
+import { AlertCircle, ArrowRight, Compass, Lock, Mail, Plane } from 'lucide-react'
 import { useAuth } from '../context/useAuth'
 import ThemeToggle from '../components/ThemeToggle'
 
@@ -160,7 +160,7 @@ function LoginPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-5 text-sm font-semibold tracking-[0.02em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-5 text-sm font-semibold tracking-[0.02em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
             >
               {isSubmitting ? (
                 'Signing In...'
@@ -172,6 +172,24 @@ function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Guest Exploration Option */}
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-[var(--color-border)]" />
+            <span className="text-xs uppercase tracking-wider text-[color:rgba(32,37,34,0.45)]">
+              or explore without an account
+            </span>
+            <div className="h-px flex-1 bg-[var(--color-border)]" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/guest/plan')}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-white)] px-5 text-sm font-semibold text-[var(--color-navy)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-ivory)] cursor-pointer"
+          >
+            <Compass className="h-4 w-4 text-[var(--color-terracotta)]" />
+            <span>Explore as Guest</span>
+          </button>
 
           <div className="mt-6 border-t border-[var(--color-border)] pt-5 text-center text-sm text-[color:rgba(32,37,34,0.7)]">
             Don&apos;t have an account?{' '}

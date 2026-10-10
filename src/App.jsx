@@ -4,6 +4,8 @@ import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import MainLayout from './layouts/MainLayout'
 import HomePage from './pages/HomePage'
+import GuestPlanPage from './pages/GuestPlanPage'
+import GuestTripPage from './pages/GuestTripPage'
 import LoginPage from './pages/LoginPage'
 import MyTripsPage from './pages/MyTripsPage'
 import ProfilePage from './pages/ProfilePage'
@@ -19,6 +21,11 @@ function App() {
             {/* Public Authentication Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
+
+            {/* Public Guest Exploration Routes */}
+            <Route path="/guest" element={<Navigate to="/guest/plan" replace />} />
+            <Route path="/guest/plan" element={<GuestPlanPage />} />
+            <Route path="/guest/trip" element={<GuestTripPage />} />
 
             {/* Protected Application Area */}
             <Route element={<ProtectedRoute />}>

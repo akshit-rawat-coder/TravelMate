@@ -36,13 +36,17 @@ function formatLastUpdated(timestamp) {
   }
 }
 
-export default function AttractionsCard({ trip }) {
+export default function AttractionsCard({ trip, isGuest = false }) {
   const { session } = useAuth()
+  const isGuestMode = Boolean(isGuest || trip?.isGuest)
   const tripId = trip?.id
   const accessToken = session?.access_token
 
+  const destination = trip?.destination
+  const country = trip?.country
+
   const [attractionsPayload, setAttractionsPayload] = useState(null)
-  const [loading, setLoading] = useState(Boolean(tripId && accessToken))
+  const [loading, setLoading] = useState(Boolean(((tripId && accessToken) || isGuestMode) && destination))
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
   const [refreshError, setRefreshError] = useState(null)
@@ -60,10 +64,17 @@ export default function AttractionsCard({ trip }) {
 
   // Initial cache-first load
   useEffect(() => {
-    if (!tripId || !accessToken) return
+    if (!destination) {
+      return
+    }
 
-    if (inFlightTripIdRef.current === tripId && retryCount === 0) return
-    inFlightTripIdRef.current = tripId
+    if (!isGuestMode && (!tripId || !accessToken)) {
+      return
+    }
+
+    const currentKey = `${tripId || destination}-${retryCount}`
+    if (inFlightTripIdRef.current === currentKey && retryCount === 0) return
+    inFlightTripIdRef.current = currentKey
 
     async function loadAttractions() {
       try {
@@ -73,22 +84,51 @@ export default function AttractionsCard({ trip }) {
 
         const supabaseUrl =
           import.meta.env.VITE_SUPABASE_URL || 'https://zmwfnttudlpyweolndtd.supabase.co'
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
         const endpointUrl = `${supabaseUrl}/functions/v1/travel-intelligence`
+
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : anonKey
+            ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+            : {}),
+        }
+
+        const bodyPayload = isGuestMode
+          ? {
+              isGuest: true,
+              guest: true,
+              service: 'attractions',
+              trip: {
+                id: tripId || 'guest-demo',
+                destination,
+                country,
+              },
+              refresh: false,
+            }
+          : {
+              tripId,
+              service: 'attractions',
+              refresh: false,
+            }
 
         const response = await fetch(endpointUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            tripId,
-            service: 'attractions',
-            refresh: false,
-          }),
+          headers,
+          body: JSON.stringify(bodyPayload),
         })
 
         if (!response.ok) {
+          if (response.status === 401 && isGuestMode) {
+            throw new Error(
+              'Attractions intelligence is temporarily unavailable or awaiting backend authorization. You can retry shortly.'
+            )
+          }
+          if (response.status === 429) {
+            throw new Error('Rate limit reached for attractions discovery. Please wait a moment and retry.')
+          }
           const errBody = await response.json().catch(() => ({}))
           throw new Error(
             errBody.error ||
@@ -118,11 +158,12 @@ export default function AttractionsCard({ trip }) {
     }
 
     loadAttractions()
-  }, [tripId, accessToken, retryCount])
+  }, [tripId, destination, country, accessToken, isGuestMode, retryCount])
 
   // Explicit user-triggered refresh
   async function handleRefreshAttractions() {
-    if (refreshing || !tripId || !accessToken) return
+    if (refreshing) return
+    if (!isGuestMode && (!tripId || !accessToken)) return
 
     try {
       setRefreshing(true)
@@ -130,19 +171,40 @@ export default function AttractionsCard({ trip }) {
 
       const supabaseUrl =
         import.meta.env.VITE_SUPABASE_URL || 'https://zmwfnttudlpyweolndtd.supabase.co'
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const endpointUrl = `${supabaseUrl}/functions/v1/travel-intelligence`
+
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : anonKey
+          ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+          : {}),
+      }
+
+      const bodyPayload = isGuestMode
+        ? {
+            isGuest: true,
+            guest: true,
+            service: 'attractions',
+            trip: {
+              id: trip?.id || 'guest-demo',
+              destination: trip?.destination,
+              country: trip?.country,
+            },
+            refresh: true,
+          }
+        : {
+            tripId,
+            service: 'attractions',
+            refresh: true,
+          }
 
       const response = await fetch(endpointUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          tripId,
-          service: 'attractions',
-          refresh: true,
-        }),
+        headers,
+        body: JSON.stringify(bodyPayload),
       })
 
       const data = await response.json().catch(() => ({}))
