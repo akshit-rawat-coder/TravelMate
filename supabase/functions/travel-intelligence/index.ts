@@ -402,6 +402,22 @@ interface DestinationResolution {
   currency: string;
 }
 
+// Helper: check if location indicates India
+function isIndianLocation(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  if (!lower) return false;
+  if (lower === "india" || lower === "in" || lower.includes("india")) return true;
+  if (INDIAN_STATES_AND_UTS.has(lower)) return true;
+  for (const state of INDIAN_STATES_AND_UTS) {
+    if (lower.includes(state)) return true;
+  }
+  const cityMatch = CITY_DESTINATION_MAP[lower];
+  if (cityMatch && cityMatch.country === "India") return true;
+  const indianIatas = ["del", "bom", "blr", "ccu", "maa", "hyd", "pnq", "goi", "gox", "jmr", "jai", "lko", "amd", "ixc", "pat", "vns", "cok"];
+  if (indianIatas.includes(lower)) return true;
+  return false;
+}
+
 // Destination resolution layer: reliably determines destination country first, then official ISO currency code
 function resolveDestination(
   rawDestination: string,
@@ -421,22 +437,6 @@ function resolveDestination(
     if (COUNTRY_INFO_MAP[key]) return COUNTRY_INFO_MAP[key];
     if (INDIAN_STATES_AND_UTS.has(key)) return { country: "India", currency: "INR" };
     return null;
-  };
-
-  // Helper: check if location indicates India
-  const isIndianLocation = (text: string): boolean => {
-    const lower = text.toLowerCase().trim();
-    if (!lower) return false;
-    if (lower === "india" || lower === "in" || lower.includes("india")) return true;
-    if (INDIAN_STATES_AND_UTS.has(lower)) return true;
-    for (const state of INDIAN_STATES_AND_UTS) {
-      if (lower.includes(state)) return true;
-    }
-    const cityMatch = CITY_DESTINATION_MAP[lower];
-    if (cityMatch && cityMatch.country === "India") return true;
-    const indianIatas = ["del", "bom", "blr", "ccu", "maa", "hyd", "pnq", "goi", "gox", "jmr", "jai", "lko", "amd", "ixc", "pat", "vns", "cok"];
-    if (indianIatas.includes(lower)) return true;
-    return false;
   };
 
   // 1. Explicit country provided in trip.country
@@ -2002,6 +2002,10 @@ async function handleVisaRequest(
     );
   }
 
+  const resolvedPassportCountry =
+    explicitPassport ||
+    (passportIso === "IND" ? "India" : (passportIso || "Unknown"));
+
   // 2. Resolve destination country ISO
   const rawDestCountry = trip.country || destinationInfo.country || trip.destination;
   const destIso = resolveCountryIso3(rawDestCountry);
@@ -2060,7 +2064,7 @@ async function handleVisaRequest(
           id: trip.id,
           destination: trip.destination,
           country: destinationInfo.country,
-          passportCountry: rawPassport,
+          passportCountry: resolvedPassportCountry,
           passportIso,
           destIso,
         },
@@ -2098,7 +2102,7 @@ async function handleVisaRequest(
             id: trip.id,
             destination: trip.destination,
             country: destinationInfo.country,
-            passportCountry: rawPassport,
+            passportCountry: resolvedPassportCountry,
             passportIso,
             destIso,
           },
@@ -2189,7 +2193,7 @@ async function handleVisaRequest(
             id: trip.id,
             destination: trip.destination,
             country: destinationInfo.country,
-            passportCountry: rawPassport,
+            passportCountry: resolvedPassportCountry,
             passportIso,
             destIso,
           },
@@ -2282,7 +2286,7 @@ async function handleVisaRequest(
         id: trip.id,
         destination: trip.destination,
         country: destinationInfo.country,
-        passportCountry: rawPassport,
+        passportCountry: resolvedPassportCountry,
         passportIso,
         destIso,
       },
